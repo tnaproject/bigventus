@@ -4,7 +4,7 @@ import pandas as pd
 import mysql.connector 
 from datetime import datetime
 
-ncUrl="SampleModelData/wrfpost_2022-11-15_00.nc"
+ncUrl="J:\\SampleModelData\\wrfpost_2022-11-15_00.nc"
 
 mydb = mysql.connector.connect(
   host="89.252.157.127",

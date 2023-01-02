@@ -87,10 +87,15 @@ def EstimateDNI(Dates,GHI,Beta,BetaLim,L,LL,SL,DS):
                 hm=h
             
             
-            CosTheta = math.sin((L-Beta)*(math.pi/100))*math.sin(Sigma*(math.pi/100))+math.cos((L-Beta)*(math.pi/100))*math.cos(Sigma)*math.cos(hm*(math.pi/100))
+            #CosTheta = math.sin((L-Beta)*(math.pi/100))*math.sin(Sigma*(math.pi/100))+math.cos((L-Beta)*(math.pi/100))*math.cos(Sigma)*math.cos(hm*(math.pi/100))
             
-            CosOmega = math.sin(L*(math.pi/100))*math.sin(Sigma*(math.pi/100))+math.cos(L*(math.pi/100))*math.cos(Sigma*(math.pi/100))*math.cos(h*(math.pi/100))
+            #CosOmega = math.sin(L*(math.pi/100))*math.sin(Sigma*(math.pi/100))+math.cos(L*(math.pi/100))*math.cos(Sigma*(math.pi/100))*math.cos(h*(math.pi/100))
+                        
+            CosTheta = math.sin(L-Beta)*math.sin(Sigma)+math.cos(L-Beta)*math.cos(Sigma)*math.cos(hm)
             
+            CosOmega = math.sin(L)*math.sin(Sigma)+math.cos(L)*math.cos(Sigma)*math.cos(h)
+            
+
             RB = CosTheta/CosOmega
             
             if RB<0:
