@@ -1,0 +1,11 @@
+{
+    "dbInfo":{
+    "dbUsersName":"dbventus",
+    "dbPassword":"z9nY3@f80YBk",
+    "dbAddress":"89.252.157.127",
+    "database":"musteriDB"
+    },
+    "seffafApi":{
+        "apiUrl":"https://api.epias.com.tr/epias/exchange/transparency/"
+    }
+}

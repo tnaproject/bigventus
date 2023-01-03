@@ -15,14 +15,13 @@ def createConnection():
     return mydbConnect
 
 
-def getProduction():
+def updateEpiasProductions():
 
+    myDBConnect = createConnection()
 
-    mydbCnnct = createConnection()
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,kgupDateTime,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
 
-    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC From siteList where epiasEIC > 0"
-
-    cursor=mydbCnnct.cursor()
+    cursor=myDBConnect.cursor()
         
     cursor.execute(selectTxt)
     
@@ -30,34 +29,71 @@ def getProduction():
  
     for site in siteTable:
         
-
         if getTableCount("siteDataList_"+str(site[0]))>0:
             
-            if getColumnCountByTable("siteDataList_"+str(site[0]),'kgupActErr')==0:
+            addSiteDataTable("siteDataList_"+str(site[0]))
+        
+        listId=getEpiasProduction(siteTable[2],"2022-01-01","2022-01-01")
 
-                insertTXT="ALTER TABLE siteDataList_"+str(site[0])+" ADD COLUMN kgupActErr double DEFAULT NULL"
-
-                cursor.execute(insertTXT)
-
-                mydbCnnct.commit()
-
-                print("siteDataList_"+str(site[0])+" KGUP")
+        print(list)
 
 
-            if getColumnCountByTable("siteDataList_"+str(site[0]),'kudupActErr')==0:
-
-                insertTXT="ALTER TABLE siteDataList_"+str(site[0])+" ADD COLUMN kudupActErr double DEFAULT NULL"
-
-                cursor.execute(insertTXT)
-
-                mydbCnnct.commit()
-
-                print("siteDataList_"+str(site[0])+" KUDUP")
 
      
-    mydbCnnct.close()
+    myDBConnect.close()
 
-        
+
+def getEpiasProduction(epiasEIC,starDate,endDate):
+    
+    apiURL=dbApiInfo["seffafApi"]+"production/real-time-generation_with_powerplant"
+
+    siteEpiasId=getEpiasProductionId(epiasEIC,starDate)
+
+    return siteEpiasId
+
+
+
+
+    # if len(siteEpiasId)==1:    
+
+    #     paramList={"powerPlantId":str(siteEpiasId[0]),"startDate":starDate,"endDate":endDate}
+
+    #     response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+    #     productionList=response.json()
+
+    #     if productionList["resultDescription"]=="success":
+
+    #         for proValue in productionList["body"]["hourlyGenerations"]:
+
+    #             valueDate=proValue["date"]
+
+    #             valuePro=proValue["total"]
+
+    # else:
+
+
+
+
+
+
+
+def addSiteDataTable(tableName):
+    try:
+
+        myDBConnect = createConnection()
+
+        cursor=myDBConnect.cursor()
+
+        cursor.callproc("createSiteDataTable",[tableName,])
+    
+        return True
+
+    except:
+
+        return False
+
+
 def addColumnToTable(tableName,columnDescTxt):
 
     try:
@@ -95,7 +131,7 @@ def getEpiasProductionId(epiasEIC,productionDate):
 
     planList=response.json()
 
-    plantSelect=-9999
+    plantSelect=[]
 
     if planList["resultDescription"]=="success":
 
@@ -103,10 +139,11 @@ def getEpiasProductionId(epiasEIC,productionDate):
 
 
             if plant["eic"]==epiasEIC:
+                
+                plantSelect.append(plant["id"])
 
-                plantSelect=plant["id"]
 
-                return plantSelect
+                
 
 
     
@@ -117,7 +154,6 @@ def getColumnCountByTable(tableName,columnName):
     
     try:
    
-
 
         myDBConnect = createConnection()
         
@@ -136,22 +172,23 @@ def getColumnCountByTable(tableName,columnName):
         print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
 
 
+
+
 def getTableCount(tableName):
 
     selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
 
     try:
    
+        myDBConnect = createConnection()
 
-        mydbConnect = mysql.connector.connect(host=dbInfo["dbInfo"]["dbAddress"], user = dbInfo["dbInfo"]["dbUsersName"], password=dbInfo["dbInfo"]["dbPassword"], database=dbInfo["dbInfo"]["database"])
-        
-        cursor=mydbConnect.cursor()
+        cursor=myDBConnect.cursor()
         
         cursor.execute(selectTXT)
     
         siteCountTable = cursor.fetchall()
 
-        mydbConnect.close()
+        myDBConnect.close()
 
         return siteCountTable[0][0]
         
@@ -163,4 +200,4 @@ def getTableCount(tableName):
 
 
 
-
+updateEpiasProductions()
