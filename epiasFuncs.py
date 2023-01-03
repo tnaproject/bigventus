@@ -1,11 +1,9 @@
 import mysql.connector
 import json
 import requests
-
-
-
-
-
+import pandas as pd
+from datetime import datetime
+from datetime import timedelta
 
 
 
@@ -13,27 +11,107 @@ import requests
 def updateEpiasProductions():
 
     with open("config.json","r") as file:
+
         dbApiInfo=json.load(file)
 
     myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
-    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,kgupDateTime,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime From siteList where epiasEIC > 0"
 
-    cursor=myDBConnect.cursor()
-        
+    cursor=myDBConnect.cursor(buffered=True)
+            
     cursor.execute(selectTxt)
     
     siteTable = cursor.fetchall()
  
     for site in siteTable:
         
-        if getTableCount("siteDataList_"+str(site[0]))>0:
+        if getTableCount("siteDataList_"+str(site[0]))==0:
             
             addSiteDataTable("siteDataList_"+str(site[0]))
-        
-        listId=getEpiasProduction(siteTable[2],"2022-01-01","2022-01-01")
 
-        print(list)
+        startDate="2018-09-01 00:00"
+        
+
+        if site[5] is not None:
+
+            if (datetime.now()-site[5]).days<10:
+
+                startDate=str(datetime.now()-timedelta(days=10))
+
+            else:
+
+                startDate=str(site[5]+timedelta(days=1))
+
+
+              
+        productionDF=getEpiasProduction(site[2],startDate,startDate)
+        
+        updateTXT="Update siteDataList_"+str(site[0]) +" Set realProduction=%s where timeStamp=%s"
+       
+
+        dataList=[]
+
+        lastDateTime=""
+
+        for row in range(0,productionDF.shape[0]):
+
+            dateTMP=pd.to_datetime(productionDF["date"][row])
+
+            dateTMP=str(dateTMP).replace("+03:00","")
+            
+            lastDateTime=dateTMP
+
+            dataList.append((str(productionDF["total"][row]*1000),dateTMP))
+            
+
+        cursor.executemany(updateTXT,dataList)
+
+        myDBConnect.commit()
+
+        rowCount=cursor.rowcount
+
+        if rowCount<=0:
+
+            lastDateTime=""
+
+            dataList=[]
+
+            for row in range(0,productionDF.shape[0]):
+
+                dateTMP=pd.to_datetime(productionDF["date"][row])
+
+                dateTMP=str(dateTMP).replace("+03:00","")
+            
+                lastDateTime=dateTMP
+
+                dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
+
+
+            insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,realProduction) VALUES(%s,%s)"
+
+            cursor.executemany(insertTXT,dataList)
+
+            myDBConnect.commit()
+
+            rowCount=cursor.rowcount
+
+
+            
+        
+
+        if lastDateTime=="":
+            
+            lastDateTime=str(pd.to_datetime(startDate))
+
+
+
+
+        updateTXT="Update siteList set realProductionDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
+
+        cursor.execute(updateTXT)
+
+        myDBConnect.commit()
 
 
 
@@ -42,14 +120,48 @@ def updateEpiasProductions():
 
 
 def getEpiasProduction(epiasEIC,starDate,endDate):
+
     with open("config.json","r") as file:
         dbApiInfo=json.load(file)
     
-    apiURL=dbApiInfo["seffafApi"]+"production/real-time-generation_with_powerplant"
+        
 
     siteEpiasId=getEpiasProductionId(epiasEIC,starDate)
 
-    return siteEpiasId
+    apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation_with_powerplant"
+   
+    siteIdList=siteEpiasId.split(",")
+
+    powerDFList=[]
+
+    for siteId in siteIdList:
+
+        paramList={"powerPlantId":siteId,"startDate":starDate,"endDate":endDate}
+
+        response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+        powerList=response.json()
+
+        responseDF=pd.DataFrame(powerList["body"]["hourlyGenerations"])
+        
+        powerDFList.append(responseDF)
+
+        print(powerDFList)
+    
+    tmpPowerDF=powerDFList[0]
+    
+    if len(siteIdList)>1:
+
+        print(tmpPowerDF)
+
+        for powerDF in range(1,len(powerDFList)):
+
+            tmpPowerDF=tmpPowerDF+powerDFList[powerDF]
+
+    
+    print(tmpPowerDF)
+  
+    return tmpPowerDF
 
 
 
@@ -134,20 +246,30 @@ def getEpiasProductionId(epiasEIC,productionDate):
 
     paramList={"period":productionDate}
 
-    response = requests.get(apiUrl,params=paramList,verify=True,timeout=30)
+    response = requests.get(apiUrl,params=paramList,verify=False,timeout=30)
 
     planList=response.json()
 
-    plantSelect=[]
+    plantSelect=""
 
+    
     if planList["resultDescription"]=="success":
 
         for plant in planList["body"]["powerPlantList"]:
-
-
+            
             if plant["eic"]==epiasEIC:
-                
-                plantSelect.append(plant["id"])
+
+                if plantSelect=="":
+
+                    plantSelect=str(plant["id"])
+
+                else:
+
+                    plantSelect+=","+str(plant["id"])
+    
+
+    return plantSelect
+
 
 
                 
