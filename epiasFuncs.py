@@ -2,16 +2,27 @@ import mysql.connector
 import json
 import requests
 
+dbApiInfo=""
+
+with open("config.json","r") as file:
+    dbApiInfo=json.load(file)
+
+
+def createConnection():
+    
+    mydbConnect=mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    return mydbConnect
+
+
 def getProduction():
 
-    with open("config.json","r") as file:
-        dbInfo=json.load(file)
 
-    mydbConnect = mysql.connector.connect(host=dbInfo["dbInfo"]["dbAddress"], user = dbInfo["dbInfo"]["dbUsersName"], password=dbInfo["dbInfo"]["dbPassword"], database=dbInfo["dbInfo"]["database"])
+    mydbCnnct = createConnection()
 
     selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC From siteList where epiasEIC > 0"
 
-    cursor=mydbConnect.cursor()
+    cursor=mydbCnnct.cursor()
         
     cursor.execute(selectTxt)
     
@@ -28,7 +39,7 @@ def getProduction():
 
                 cursor.execute(insertTXT)
 
-                mydbConnect.commit()
+                mydbCnnct.commit()
 
                 print("siteDataList_"+str(site[0])+" KGUP")
 
@@ -39,27 +50,44 @@ def getProduction():
 
                 cursor.execute(insertTXT)
 
-                mydbConnect.commit()
+                mydbCnnct.commit()
 
                 print("siteDataList_"+str(site[0])+" KUDUP")
 
-
-
-
-        
-
-
-    mydbConnect.close()
+     
+    mydbCnnct.close()
 
         
+def addColumnToTable(tableName,columnDescTxt):
+
+    try:
+        
+        myDBConnect = createConnection()
+
+        if getTableCount(tableName)>0:
+            
+            insertTXT="ALTER TABLE "+tableName+" "+columnDescTxt
+
+            cursor=myDBConnect.cursor()
+
+            cursor.execute(insertTXT)
+
+            myDBConnect.commit()
+
+            myDBConnect.close()
+
+            return True
+
+    except:
+
+        return False
+
+
 
 def getEpiasProductionId(epiasEIC,productionDate):
     
-    
-    with open("config.json","r") as file:
-        apiInfo=json.load(file)
 
-    apiUrl=apiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation-power-plant-list?"
+    apiUrl=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation-power-plant-list?"
 
     paramList={"period":productionDate}
 
@@ -89,22 +117,20 @@ def getColumnCountByTable(tableName,columnName):
     
     try:
    
-        with open("config.json","r") as file:
-            dbInfo=json.load(file)
 
-        mydbConnect = mysql.connector.connect(host=dbInfo["dbInfo"]["dbAddress"], user = dbInfo["dbInfo"]["dbUsersName"], password=dbInfo["dbInfo"]["dbPassword"], database=dbInfo["dbInfo"]["database"])
+
+        myDBConnect = createConnection()
         
-        cursor=mydbConnect.cursor()
+        cursor=myDBConnect.cursor()
         
         cursor.execute(selectTXT)
     
         siteCountColumn = cursor.fetchall()
 
-        mydbConnect.close()
+        myDBConnect.close()
 
         return siteCountColumn[0][0]
         
-
     except:
 
         print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
@@ -116,8 +142,6 @@ def getTableCount(tableName):
 
     try:
    
-        with open("config.json","r") as file:
-            dbInfo=json.load(file)
 
         mydbConnect = mysql.connector.connect(host=dbInfo["dbInfo"]["dbAddress"], user = dbInfo["dbInfo"]["dbUsersName"], password=dbInfo["dbInfo"]["dbPassword"], database=dbInfo["dbInfo"]["database"])
         
@@ -139,4 +163,4 @@ def getTableCount(tableName):
 
 
 
-getProduction()
+
