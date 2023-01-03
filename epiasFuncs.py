@@ -9,7 +9,7 @@ from datetime import timedelta
 
 
 def updateEpiasProductions():
-    print("test")
+   
     with open("config.json","r") as file:
 
         dbApiInfo=json.load(file)
