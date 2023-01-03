@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 from datetime import timedelta
 
+#request sertifika hatası almamak için
+requests.packages.urllib3.disable_warnings()
 
 
 
@@ -32,7 +34,6 @@ def updateEpiasProductions():
 
         startDate="2018-09-01 00:00"
         
-
         if site[5] is not None:
 
             if (datetime.now()-site[5]).days<10:
@@ -44,38 +45,15 @@ def updateEpiasProductions():
                 startDate=str(site[5]+timedelta(days=1))
 
 
-              
-        productionDF=getEpiasProduction(site[2],startDate,startDate)
+        if startDate<datetime.now():
+
+            productionDF=getEpiasProduction(site[2],startDate,startDate)
         
-        updateTXT="Update siteDataList_"+str(site[0]) +" Set realProduction=%s where timeStamp=%s"
+            updateTXT="Update siteDataList_"+str(site[0]) +" Set realProduction=%s where timeStamp=%s"
        
-
-        dataList=[]
-
-        lastDateTime=""
-
-        for row in range(0,productionDF.shape[0]):
-
-            dateTMP=pd.to_datetime(productionDF["date"][row])
-
-            dateTMP=str(dateTMP).replace("+03:00","")
-            
-            lastDateTime=dateTMP
-
-            dataList.append((str(productionDF["total"][row]*1000),dateTMP))
-            
-
-        cursor.executemany(updateTXT,dataList)
-
-        myDBConnect.commit()
-
-        rowCount=cursor.rowcount
-
-        if rowCount<=0:
+            dataList=[]
 
             lastDateTime=""
-
-            dataList=[]
 
             for row in range(0,productionDF.shape[0]):
 
@@ -85,108 +63,224 @@ def updateEpiasProductions():
             
                 lastDateTime=dateTMP
 
-                dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
+                dataList.append((str(productionDF["total"][row]*1000),dateTMP))
+            
 
-
-            insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,realProduction) VALUES(%s,%s)"
-
-            cursor.executemany(insertTXT,dataList)
+            cursor.executemany(updateTXT,dataList)
 
             myDBConnect.commit()
 
             rowCount=cursor.rowcount
 
+            if rowCount<=0:
 
+                lastDateTime=""
+
+                dataList=[]
+
+                for row in range(0,productionDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(productionDF["date"][row])
+
+                    dateTMP=str(dateTMP).replace("+03:00","")
             
-        
+                    lastDateTime=dateTMP
 
-        if lastDateTime=="":
+                    dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
+
+
+                insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,realProduction) VALUES(%s,%s)"
+
+                cursor.executemany(insertTXT,dataList)
+
+                myDBConnect.commit()
+
+                rowCount=cursor.rowcount
+
+            else:
+
+                print("HATA")
+                #hataları hesapla
+
+                # for row in range(0,productionDF.shape[0]):
+
+                #     dateTMP=pd.to_datetime(productionDF["date"][row])
+
+                #     dateTMP=str(dateTMP).replace("+03:00","")
             
-            lastDateTime=str(pd.to_datetime(startDate))
+                #     lastDateTime=dateTMP
+
+                #     dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
 
 
+            if lastDateTime=="":
+            
+                lastDateTime=str(pd.to_datetime(startDate))
 
 
-        updateTXT="Update siteList set realProductionDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
+            print(str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
 
-        cursor.execute(updateTXT)
+            updateTXT="Update siteList set realProductionDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
 
-        myDBConnect.commit()
+            cursor.execute(updateTXT)
 
-
-
-     
-    myDBConnect.close()
-
-
-def getEpiasProduction(epiasEIC,starDate,endDate):
-
-    with open("config.json","r") as file:
-        dbApiInfo=json.load(file)
+            myDBConnect.commit()
     
-        
+        myDBConnect.close()
 
-    siteEpiasId=getEpiasProductionId(epiasEIC,starDate)
 
-    apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation_with_powerplant"
-   
-    siteIdList=siteEpiasId.split(",")
+#Epias Emre Amade Kapasite Verisi
+def getEpiasAIC(organizationEIC,epiasOrgEIC,starDate,endDate,isTurkey=False):
+    try:
 
-    powerDFList=[]
+        with open("config.json","r") as file:
 
-    for siteId in siteIdList:
+            dbApiInfo=json.load(file)
+            
 
-        paramList={"powerPlantId":siteId,"startDate":starDate,"endDate":endDate}
+        apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/aic"
+
+        if isTurkey==False:
+ 
+            paramList={"organizationEIC":organizationEIC,"uevcbEIC":epiasOrgEIC,"startDate":starDate,"endDate":endDate}
+
+        else:
+  
+            paramList={"startDate":starDate,"endDate":endDate}
+
 
         response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
 
         powerList=response.json()
 
-        responseDF=pd.DataFrame(powerList["body"]["hourlyGenerations"])
+        tmpAICDF=pd.DataFrame(powerList["body"]["aicList"])
+
+        return tmpAICDF
+
+    except:
+
+        return "hata"
+
+
+#Epias KUDUP Verisi
+def getEpiasKUDUP(organizationEIC,epiasOrgEIC,starDate,endDate):
+
+    try:
+
+        orgId=str(int(organizationEIC[5:-1]))
+
+        plantId=str(int(epiasOrgEIC[5:-1]))
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+               
+
+        apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/sbfgp"
+             
+        paramList={"organizationId":orgId,"uevcbId":plantId,"startDate":starDate,"endDate":endDate}
+
+        response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+        kgupList=response.json()
+
+        responseDF=pd.DataFrame(kgupList["body"]["dppList"])
+    
+        return responseDF
+
+    except:
+
+        return "hata"
+
+
+
+#Epias KGUP Verisi
+def getEpiasKGUP(organizationEIC,epiasOrgEIC,starDate,endDate):
+
+    try:
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+               
+
+        apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/dpp"
+             
+        paramList={"organizationEIC":organizationEIC,"uevcbEIC":epiasOrgEIC,"startDate":starDate,"endDate":endDate}
+
+        response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+        kgupList=response.json()
+
+        responseDF=pd.DataFrame(kgupList["body"]["dppList"])
+    
+        return responseDF
+
+    except:
+
+        return "hata"
+
+#Epias Üretim Verisi
+def getEpiasProduction(epiasEIC,starDate,endDate,isTurkey=False):
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+            
+
+        if isTurkey==False:
+
+            siteEpiasId=getEpiasProductionId(epiasEIC,starDate)
+
+
+            apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation_with_powerplant"
+   
+            siteIdList=siteEpiasId.split(",")
+
+            powerDFList=[]
+
+            for siteId in siteIdList:
+
+                paramList={"powerPlantId":siteId,"startDate":starDate,"endDate":endDate}
+
+                response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+                powerList=response.json()
+
+                responseDF=pd.DataFrame(powerList["body"]["hourlyGenerations"])
         
-        powerDFList.append(responseDF)
+                powerDFList.append(responseDF)
 
-        print(powerDFList)
+            
+            tmpPowerDF=powerDFList[0]
     
-    tmpPowerDF=powerDFList[0]
-    
-    if len(siteIdList)>1:
+            if len(siteIdList)>1:
 
-        print(tmpPowerDF)
+                print(tmpPowerDF)
 
-        for powerDF in range(1,len(powerDFList)):
+                if tmpPowerDF.shape[0]>0:
 
-            tmpPowerDF=tmpPowerDF+powerDFList[powerDF]
+                    for powerDF in range(1,len(powerDFList)):
 
-    
-    print(tmpPowerDF)
-  
-    return tmpPowerDF
+                        tmpPowerDF["total"]=tmpPowerDF["total"]+powerDFList[powerDF]["total"]
 
 
+        else:
 
+            apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation"
 
-    # if len(siteEpiasId)==1:    
+            paramList={"startDate":starDate,"endDate":endDate}
 
-    #     paramList={"powerPlantId":str(siteEpiasId[0]),"startDate":starDate,"endDate":endDate}
+            response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
 
-    #     response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+            powerList=response.json()
 
-    #     productionList=response.json()
+            tmpPowerDF=pd.DataFrame(powerList["body"]["hourlyGenerations"])
 
-    #     if productionList["resultDescription"]=="success":
+        return tmpPowerDF
 
-    #         for proValue in productionList["body"]["hourlyGenerations"]:
+    except:
 
-    #             valueDate=proValue["date"]
-
-    #             valuePro=proValue["total"]
-
-    # else:
-
-
-
-
+        return "hata"
 
 
 
@@ -334,4 +428,4 @@ def getTableCount(tableName):
 
 
 
-updateEpiasProductions()
+# updateEpiasProductions()
