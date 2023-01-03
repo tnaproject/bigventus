@@ -2,22 +2,20 @@ import mysql.connector
 import json
 import requests
 
-dbApiInfo=""
-
-with open("config.json","r") as file:
-    dbApiInfo=json.load(file)
 
 
-def createConnection():
-    
-    mydbConnect=mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
-    return mydbConnect
+
+
+
 
 
 def updateEpiasProductions():
 
-    myDBConnect = createConnection()
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
     selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,kgupDateTime,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
 
@@ -44,6 +42,8 @@ def updateEpiasProductions():
 
 
 def getEpiasProduction(epiasEIC,starDate,endDate):
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
     
     apiURL=dbApiInfo["seffafApi"]+"production/real-time-generation_with_powerplant"
 
@@ -80,8 +80,11 @@ def getEpiasProduction(epiasEIC,starDate,endDate):
 
 def addSiteDataTable(tableName):
     try:
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
 
-        myDBConnect = createConnection()
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
         cursor=myDBConnect.cursor()
 
@@ -97,8 +100,10 @@ def addSiteDataTable(tableName):
 def addColumnToTable(tableName,columnDescTxt):
 
     try:
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
         
-        myDBConnect = createConnection()
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
         if getTableCount(tableName)>0:
             
@@ -122,6 +127,8 @@ def addColumnToTable(tableName,columnDescTxt):
 
 def getEpiasProductionId(epiasEIC,productionDate):
     
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
 
     apiUrl=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation-power-plant-list?"
 
@@ -154,8 +161,10 @@ def getColumnCountByTable(tableName,columnName):
     
     try:
    
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
 
-        myDBConnect = createConnection()
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
         
         cursor=myDBConnect.cursor()
         
@@ -179,8 +188,11 @@ def getTableCount(tableName):
     selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
 
     try:
-   
-        myDBConnect = createConnection()
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
         cursor=myDBConnect.cursor()
         
