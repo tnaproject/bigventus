@@ -9,8 +9,7 @@ from datetime import timedelta
 requests.packages.urllib3.disable_warnings()
 
 
-
-def updateEpiasProductions():
+def updateSiteEPIASData():
    
     with open("config.json","r") as file:
 
@@ -18,34 +17,565 @@ def updateEpiasProductions():
 
     myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
-    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime From siteList where epiasEIC > 0"
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
 
-    cursor=myDBConnect.cursor(buffered=True)
+    cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
     
     siteTable = cursor.fetchall()
- 
+
+      #AIC Update
     for site in siteTable:
         
+        tmpDate=datetime.now()-timedelta(seconds=1)
+
+        while (tmpDate-(datetime.now()+timedelta(seconds=10))).total_seconds()<0:
+
+            responseDate=updateSiteAIC(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(seconds=2)
+
+
+    #  #KUDUP Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while (tmpDate-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+
+            responseDate=updateSiteKUDUP(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(days=2)
+
+
+    #KGUP Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while (tmpDate-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+
+            responseDate=updateSiteKGUP(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(days=2)
+
+
+
+    #Production Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while ((tmpDate-datetime.now())).total_seconds()<0:
+
+            responseDate=updateSiteProduction(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(hours=2)
+
+
+
+def updateSiteAIC(site):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where  id="+str(site[0])
+
+        cursor=myDBConnect.cursor()
+            
+        cursor.execute(selectTxt)
+    
+        siteTable = cursor.fetchall()
+
+        cursor=myDBConnect.cursor()
+
         if getTableCount("siteDataList_"+str(site[0]))==0:
             
             addSiteDataTable("siteDataList_"+str(site[0]))
 
         startDate="2018-09-01 00:00"
         
-        if site[5] is not None:
+        if siteTable[0][9] is not None:
 
-            if (datetime.now()-site[5]).days<10:
+            startDate=str(siteTable[0][9]+timedelta(days=1))
+
+
+        if (pd.to_datetime(startDate)-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+            
+            orgEpias=getOrganizationInfo(site[7])
+
+
+            aicDF=getEpiasAIC(orgEpias[3],site[4],startDate,startDate)
+
+        
+            updateTXT="Update siteDataList_"+str(site[0]) +" Set aic=%s where timeStamp=%s"
+       
+            dataList=[]
+
+            lastDateTime=""
+
+            for row in range(0,aicDF.shape[0]):
+
+                dateTMP=pd.to_datetime(aicDF["tarih"][row])
+
+                dateTMP=str(dateTMP).replace("+03:00","")
+            
+                lastDateTime=dateTMP
+
+                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set aic = NULL where timeStamp='"+str(dateTMP)+"'"
+
+                cursor.execute(updateTMPTxt)
+
+                myDBConnect.commit()
+
+                dataList.append((str(aicDF["toplam"][row]*1000),dateTMP))
+                        
+
+            cursor.executemany(updateTXT,dataList)
+
+            myDBConnect.commit()
+
+            rowCount=cursor.rowcount
+
+            if rowCount<=0:
+
+                lastDateTime=""
+
+                dataList=[]
+
+                for row in range(0,aicDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(aicDF["tarih"][row])
+
+                    dateTMP=str(dateTMP).replace("+03:00","")
+            
+                    lastDateTime=dateTMP
+
+                    dataList.append((dateTMP,str(aicDF["toplam"][row]*1000)))
+
+
+                insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,aic) VALUES(%s,%s)"
+
+                cursor.executemany(insertTXT,dataList)
+
+                myDBConnect.commit()
+
+                rowCount=cursor.rowcount
+
+               
+
+
+            if lastDateTime=="":
+            
+                lastDateTime=str(pd.to_datetime(startDate))
+
+
+            print("AIC>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            
+            updateTXT="Update siteList set aicDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
+
+            cursor.execute(updateTXT)
+
+            myDBConnect.commit()
+
+            return lastDateTime
+
+        else:
+            
+            return startDate
+
+    except:
+
+        return "-9999"
+
+
+
+
+def updateSiteKUDUP(site):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+        
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where  id="+str(site[0])
+
+        cursor=myDBConnect.cursor()
+            
+        cursor.execute(selectTxt)
+    
+        siteTable = cursor.fetchall()
+
+        cursor=myDBConnect.cursor()
+
+        if getTableCount("siteDataList_"+str(site[0]))==0:
+            
+            addSiteDataTable("siteDataList_"+str(site[0]))
+
+        startDate="2018-09-01 00:00"
+        
+        if siteTable[0][8] is not None:
+
+            startDate=str(siteTable[0][8]+timedelta(days=1))
+
+
+        if (pd.to_datetime(startDate)-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+            
+            orgEpias=getOrganizationInfo(site[7])
+
+
+            kudupDF=getEpiasKUDUP(orgEpias[3],site[4],startDate,startDate)
+
+        
+            updateTXT="Update siteDataList_"+str(site[0]) +" Set KUDUP=%s where timeStamp=%s"
+       
+            dataList=[]
+
+            lastDateTime=""
+
+            for row in range(0,kudupDF.shape[0]):
+
+                dateTMP=pd.to_datetime(kudupDF["tarih"][row])
+
+                dateTMP=str(dateTMP).replace("+03:00","")
+            
+                lastDateTime=dateTMP
+
+                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KUDUP = NULL where timeStamp='"+str(dateTMP)+"'"
+
+                cursor.execute(updateTMPTxt)
+
+                myDBConnect.commit()
+
+                dataList.append((str(kudupDF["toplam"][row]*1000),dateTMP))
+                        
+
+            cursor.executemany(updateTXT,dataList)
+
+            myDBConnect.commit()
+
+            rowCount=cursor.rowcount
+
+            if rowCount<=0:
+
+                lastDateTime=""
+
+                dataList=[]
+
+                for row in range(0,kudupDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(kudupDF["tarih"][row])
+
+                    dateTMP=str(dateTMP).replace("+03:00","")
+            
+                    lastDateTime=dateTMP
+
+                    dataList.append((dateTMP,str(kudupDF["toplam"][row]*1000)))
+
+
+                insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KUDUP) VALUES(%s,%s)"
+
+                cursor.executemany(insertTXT,dataList)
+
+                myDBConnect.commit()
+
+                rowCount=cursor.rowcount
+
+            else:
+
+                
+
+                for row in range(0,kudupDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(kudupDF["tarih"][row])
+
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kudupErr=KUDUP-realProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
+
+                    myDBConnect.commit()
+
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kudupActErr=KUDUP-actualProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
+
+                    myDBConnect.commit()
+
+                
+
+
+            if lastDateTime=="":
+            
+                lastDateTime=str(pd.to_datetime(startDate))
+
+
+            print("KUDUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            
+            updateTXT="Update siteList set kudupDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
+
+            cursor.execute(updateTXT)
+
+            myDBConnect.commit()
+
+            return lastDateTime
+
+        else:
+            
+            return startDate
+
+    except:
+
+        return "-9999"
+
+
+
+#update Site KGUP       
+def updateSiteKGUP(site):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where  id="+str(site[0])
+
+        cursor=myDBConnect.cursor()
+            
+        cursor.execute(selectTxt)
+    
+        siteTable = cursor.fetchall()
+
+
+        cursor=myDBConnect.cursor()
+
+        if getTableCount("siteDataList_"+str(site[0]))==0:
+            
+            addSiteDataTable("siteDataList_"+str(site[0]))
+
+        startDate="2018-09-01 00:00"
+        
+        if siteTable[0][6] is not None:
+
+            startDate=str(siteTable[0][6]+timedelta(days=1))
+
+
+        if (pd.to_datetime(startDate)-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+            
+            orgEpias=getOrganizationInfo(site[7])
+
+
+            kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,startDate)
+
+        
+            updateTXT="Update siteDataList_"+str(site[0]) +" Set KGUP=%s where timeStamp=%s"
+       
+            dataList=[]
+
+            lastDateTime=""
+
+            for row in range(0,kgupDF.shape[0]):
+
+                dateTMP=pd.to_datetime(kgupDF["tarih"][row])
+
+                dateTMP=str(dateTMP).replace("+03:00","")
+            
+                lastDateTime=dateTMP
+                
+                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KGUP = NULL where timeStamp='"+str(dateTMP)+"'"
+
+                cursor.execute(updateTMPTxt)
+
+                myDBConnect.commit()
+
+                dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
+                        
+
+            cursor.executemany(updateTXT,dataList)
+
+            myDBConnect.commit()
+
+            rowCount=cursor.rowcount
+
+            if rowCount<=0:
+
+                lastDateTime=""
+
+                dataList=[]
+
+                for row in range(0,kgupDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(kgupDF["tarih"][row])
+
+                    dateTMP=str(dateTMP).replace("+03:00","")
+            
+                    lastDateTime=dateTMP
+
+                    dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
+
+
+                insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
+
+                cursor.executemany(insertTXT,dataList)
+
+                myDBConnect.commit()
+
+                rowCount=cursor.rowcount
+
+            else:
+
+                
+
+                for row in range(0,kgupDF.shape[0]):
+
+                    dateTMP=pd.to_datetime(kgupDF["tarih"][row])
+
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kgupErr=KGUP-realProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
+
+                    myDBConnect.commit()
+
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kgupActErr=KGUP-actualProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
+
+                    myDBConnect.commit()
+
+                
+
+
+            if lastDateTime=="":
+            
+                lastDateTime=str(pd.to_datetime(startDate))
+
+
+            print("KGUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            
+            updateTXT="Update siteList set kgupDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
+
+            cursor.execute(updateTXT)
+
+            myDBConnect.commit()
+
+            return lastDateTime
+
+        else:
+            
+            return startDate
+
+    except:
+
+        return "-9999"
+
+
+
+def getOrganizationInfo(orgId):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+
+
+        selectTXT="Select * From epiasCompanyList where id="+str(orgId)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        cursor=myDBConnect.cursor()
+        
+        orgList=cursor.execute(selectTXT)
+
+        orgList=cursor.fetchall()
+
+        myDBConnect.commit()
+
+        for org in orgList:
+
+            return org
+
+    except:
+
+        return "-9999"
+
+
+def updateSiteProduction(site):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where  id="+str(site[0])
+
+        cursor=myDBConnect.cursor()
+            
+        cursor.execute(selectTxt)
+    
+        siteTable = cursor.fetchall()
+
+
+
+        cursor=myDBConnect.cursor()
+
+        if getTableCount("siteDataList_"+str(site[0]))==0:
+            
+            addSiteDataTable("siteDataList_"+str(site[0]))
+
+        startDate="2018-09-01 00:00"
+        
+        if siteTable[0][5] is not None:
+
+            if (datetime.now()-siteTable[0][5]).days<10:
 
                 startDate=str(datetime.now()-timedelta(days=10))
 
             else:
 
-                startDate=str(site[5]+timedelta(days=1))
+                startDate=str(siteTable[0][5]+timedelta(days=1))
 
 
-        if startDate<datetime.now():
+        if (pd.to_datetime(startDate)-datetime.now()).total_seconds()<0:
 
             productionDF=getEpiasProduction(site[2],startDate,startDate)
         
@@ -63,8 +593,14 @@ def updateEpiasProductions():
             
                 lastDateTime=dateTMP
 
+                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set realProduction = NULL where timeStamp='"+str(dateTMP)+"'"
+
+                cursor.execute(updateTMPTxt)
+
+                myDBConnect.commit()
+
                 dataList.append((str(productionDF["total"][row]*1000),dateTMP))
-            
+                        
 
             cursor.executemany(updateTXT,dataList)
 
@@ -99,18 +635,24 @@ def updateEpiasProductions():
 
             else:
 
-                print("HATA")
-                #hataları hesapla
+                
 
-                # for row in range(0,productionDF.shape[0]):
+                for row in range(0,productionDF.shape[0]):
 
-                #     dateTMP=pd.to_datetime(productionDF["date"][row])
+                    dateTMP=pd.to_datetime(productionDF["date"][row])
 
-                #     dateTMP=str(dateTMP).replace("+03:00","")
-            
-                #     lastDateTime=dateTMP
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kgupErr=KGUP-realProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
 
-                #     dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
+                    myDBConnect.commit()
+
+                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kudupErr=KUDUP-realProduction where timeStamp='"+str(dateTMP)+"'"
+                                
+                    cursor.execute(updateTXT)
+
+                    myDBConnect.commit()
+                
 
 
             if lastDateTime=="":
@@ -125,9 +667,16 @@ def updateEpiasProductions():
             cursor.execute(updateTXT)
 
             myDBConnect.commit()
-    
-        myDBConnect.close()
 
+            return lastDateTime
+
+        else:
+            
+            return startDate
+
+    except:
+
+        return "-9999"
 
 #Epias Emre Amade Kapasite Verisi
 def getEpiasAIC(organizationEIC,epiasOrgEIC,starDate,endDate,isTurkey=False):
@@ -154,6 +703,8 @@ def getEpiasAIC(organizationEIC,epiasOrgEIC,starDate,endDate,isTurkey=False):
         powerList=response.json()
 
         tmpAICDF=pd.DataFrame(powerList["body"]["aicList"])
+
+      
 
         return tmpAICDF
 
@@ -428,4 +979,5 @@ def getTableCount(tableName):
 
 
 
-# updateEpiasProductions()
+updateSiteEPIASData()
+
