@@ -10,10 +10,6 @@ def calcPower(Dates,GHI,t,lat,lon,Beta,EWLim,countPV,lossFactor,eref,alpha,PVAre
     
     DS=0
     
-    for tValue in t:
-        tValue=tValue-272.15
-
-   
     tip=type(t)
 
     t=t.mean()-272.15

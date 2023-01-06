@@ -4,9 +4,154 @@ import requests
 import pandas as pd
 from datetime import datetime
 from datetime import timedelta
-
+import sys
 #request sertifika hatası almamak için
 requests.packages.urllib3.disable_warnings()
+
+
+
+
+
+def updateSitesEpiasAIC():
+
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
+
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
+    
+    siteTable = cursor.fetchall()
+
+      #AIC Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(seconds=1)
+
+        if getTableCount("siteDataList_"+str(site[0]))==0:
+            
+            addSiteDataTable("siteDataList_"+str(site[0]))
+
+        while (tmpDate-(datetime.now()+timedelta(seconds=10))).total_seconds()<0:
+
+            responseDate=updateSiteAIC(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(seconds=2)
+
+
+def updateSitesEpiasKGUP():
+
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
+
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
+    
+    siteTable = cursor.fetchall()
+
+    #KGUP Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while (tmpDate-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+
+            responseDate=updateSiteKGUP(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(days=2)
+
+
+
+
+def updateSitesEpiasKUDUP():
+
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
+
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
+    
+    siteTable = cursor.fetchall()
+
+    #KUDUP Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while (tmpDate-(datetime.now()+timedelta(days=1))).total_seconds()<0:
+
+            responseDate=updateSiteKUDUP(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(days=2)
+
+
+def updateSitesEpiasProduction():
+
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    selectTxt="Select id,siteName,epiasEIC,epiasCompanyId,epiasOrgEIC,realProductionDateTime,kgupDateTime,epiasCompanyId,kudupDateTime,aicDateTime From siteList where epiasEIC > 0"
+
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
+    
+    siteTable = cursor.fetchall()
+
+    #Production Update
+    for site in siteTable:
+        
+        tmpDate=datetime.now()-timedelta(hours=1)
+
+        while ((tmpDate-datetime.now())).total_seconds()<0:
+
+            responseDate=updateSiteProduction(site)
+
+            if responseDate!="-9999":
+
+                tmpDate=pd.to_datetime(responseDate)
+
+            else:
+
+                tmpDate=datetime.now()+timedelta(hours=2)
 
 
 def updateSiteEPIASData():
@@ -99,6 +244,22 @@ def updateSiteEPIASData():
 
 
 
+def startProcess():
+    print(sys.argv[1])
+    processId=sys.argv[1]
+    if processId=='0':
+        updateSitesEpiasAIC()
+
+    if processId=='1':
+        updateSitesEpiasKGUP()
+    
+    if processId=='2':
+        updateSitesEpiasKUDUP()
+
+    if processId=='3':
+        updateSitesEpiasProduction()
+
+
 def updateSiteAIC(site):
 
     try:
@@ -119,10 +280,6 @@ def updateSiteAIC(site):
 
         cursor=myDBConnect.cursor()
 
-        if getTableCount("siteDataList_"+str(site[0]))==0:
-            
-            addSiteDataTable("siteDataList_"+str(site[0]))
-
         startDate="2018-09-01 00:00"
         
         if siteTable[0][9] is not None:
@@ -134,9 +291,9 @@ def updateSiteAIC(site):
             
             orgEpias=getOrganizationInfo(site[7])
 
+            endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
 
-            aicDF=getEpiasAIC(orgEpias[3],site[4],startDate,startDate)
-
+            aicDF=getEpiasAIC(orgEpias[3],site[4],startDate,endDate)
         
             updateTXT="Update siteDataList_"+str(site[0]) +" Set aic=%s where timeStamp=%s"
        
@@ -145,20 +302,23 @@ def updateSiteAIC(site):
             lastDateTime=""
 
             for row in range(0,aicDF.shape[0]):
+                deger=str(aicDF["toplam"][row])
+                if aicDF["toplam"][row]!=None and str(aicDF["toplam"][row])!='nan' :
+                
 
-                dateTMP=pd.to_datetime(aicDF["tarih"][row])
+                    dateTMP=pd.to_datetime(aicDF["tarih"][row])
 
-                dateTMP=str(dateTMP).replace("+03:00","")
+                    dateTMP=str(dateTMP).replace("+03:00","")
             
-                lastDateTime=dateTMP
+                    lastDateTime=dateTMP
 
-                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set aic = NULL where timeStamp='"+str(dateTMP)+"'"
+                    updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set aic = NULL where timeStamp='"+str(dateTMP)+"'"
 
-                cursor.execute(updateTMPTxt)
+                    cursor.execute(updateTMPTxt)
 
-                myDBConnect.commit()
+                    myDBConnect.commit()
 
-                dataList.append((str(aicDF["toplam"][row]*1000),dateTMP))
+                    dataList.append((str(aicDF["toplam"][row]*1000),dateTMP))
                         
 
             cursor.executemany(updateTXT,dataList)
@@ -174,14 +334,17 @@ def updateSiteAIC(site):
                 dataList=[]
 
                 for row in range(0,aicDF.shape[0]):
+                    deger=aicDF["toplam"][row]
+                    if aicDF["toplam"][row]!=None and str(aicDF["toplam"][row])!='nan' :
+                  
 
-                    dateTMP=pd.to_datetime(aicDF["tarih"][row])
+                        dateTMP=pd.to_datetime(aicDF["tarih"][row])
 
-                    dateTMP=str(dateTMP).replace("+03:00","")
+                        dateTMP=str(dateTMP).replace("+03:00","")
             
-                    lastDateTime=dateTMP
+                        lastDateTime=dateTMP
 
-                    dataList.append((dateTMP,str(aicDF["toplam"][row]*1000)))
+                        dataList.append((dateTMP,str(aicDF["toplam"][row]*1000)))
 
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,aic) VALUES(%s,%s)"
@@ -200,13 +363,16 @@ def updateSiteAIC(site):
                 lastDateTime=str(pd.to_datetime(startDate))
 
 
-            print("AIC>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            print("AIC>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount)+"/"+str(datetime.now()))
+
             
             updateTXT="Update siteList set aicDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
 
             cursor.execute(updateTXT)
 
             myDBConnect.commit()
+
+            myDBConnect.close()
 
             return lastDateTime
 
@@ -218,7 +384,8 @@ def updateSiteAIC(site):
 
         return "-9999"
 
-
+def dropSiteTable(tableName):
+    queryTXT="Drop table "
 
 
 def updateSiteKUDUP(site):
@@ -256,9 +423,10 @@ def updateSiteKUDUP(site):
         if (pd.to_datetime(startDate)-(datetime.now()+timedelta(days=1))).total_seconds()<0:
             
             orgEpias=getOrganizationInfo(site[7])
+            
+            endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
 
-
-            kudupDF=getEpiasKUDUP(orgEpias[3],site[4],startDate,startDate)
+            kudupDF=getEpiasKUDUP(orgEpias[3],site[4],startDate,endDate)
 
         
             updateTXT="Update siteDataList_"+str(site[0]) +" Set KUDUP=%s where timeStamp=%s"
@@ -343,14 +511,16 @@ def updateSiteKUDUP(site):
                 lastDateTime=str(pd.to_datetime(startDate))
 
 
-            print("KUDUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            print("KUDUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount)+"/"+str(datetime.now()))
             
             updateTXT="Update siteList set kudupDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
 
             cursor.execute(updateTXT)
 
             myDBConnect.commit()
-
+            
+            myDBConnect.close()
+            
             return lastDateTime
 
         else:
@@ -400,6 +570,7 @@ def updateSiteKGUP(site):
             
             orgEpias=getOrganizationInfo(site[7])
 
+            endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
 
             kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,startDate)
 
@@ -486,13 +657,15 @@ def updateSiteKGUP(site):
                 lastDateTime=str(pd.to_datetime(startDate))
 
 
-            print("KGUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            print("KGUP>"+str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount)+"/"+str(datetime.now()))
             
             updateTXT="Update siteList set kgupDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
 
             cursor.execute(updateTXT)
 
             myDBConnect.commit()
+
+            myDBConnect.close()
 
             return lastDateTime
 
@@ -526,6 +699,8 @@ def getOrganizationInfo(orgId):
         orgList=cursor.fetchall()
 
         myDBConnect.commit()
+
+        myDBConnect.close()
 
         for org in orgList:
 
@@ -576,7 +751,8 @@ def updateSiteProduction(site):
 
 
         if (pd.to_datetime(startDate)-datetime.now()).total_seconds()<0:
-
+            
+            
             productionDF=getEpiasProduction(site[2],startDate,startDate)
         
             updateTXT="Update siteDataList_"+str(site[0]) +" Set realProduction=%s where timeStamp=%s"
@@ -660,13 +836,15 @@ def updateSiteProduction(site):
                 lastDateTime=str(pd.to_datetime(startDate))
 
 
-            print(str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount))
+            print(str(site[0])+"/"+site[1]+"/"+lastDateTime+"/"+str(rowCount)+"/"+str(datetime.now()))
 
             updateTXT="Update siteList set realProductionDateTime='"+str(lastDateTime)+"' where id='"+str(site[0])+"'"
 
             cursor.execute(updateTXT)
 
             myDBConnect.commit()
+            
+            myDBConnect.close()
 
             return lastDateTime
 
@@ -704,7 +882,8 @@ def getEpiasAIC(organizationEIC,epiasOrgEIC,starDate,endDate,isTurkey=False):
 
         tmpAICDF=pd.DataFrame(powerList["body"]["aicList"])
 
-      
+       
+
 
         return tmpAICDF
 
@@ -846,7 +1025,9 @@ def addSiteDataTable(tableName):
         cursor=myDBConnect.cursor()
 
         cursor.callproc("createSiteDataTable",[tableName,])
-    
+        
+        myDBConnect.close()
+
         return True
 
     except:
@@ -915,11 +1096,6 @@ def getEpiasProductionId(epiasEIC,productionDate):
 
     return plantSelect
 
-
-
-                
-
-
     
 
 def getColumnCountByTable(tableName,columnName):
@@ -948,9 +1124,9 @@ def getColumnCountByTable(tableName,columnName):
         print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
 
 
-
-
 def getTableCount(tableName):
+
+  
 
     selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
 
@@ -979,5 +1155,6 @@ def getTableCount(tableName):
 
 
 
-updateSiteEPIASData()
+updateSitesEpiasAIC()
+
 
