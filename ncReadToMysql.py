@@ -2,10 +2,95 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import mysql.connector 
-from datetime import datetime
+from datetime import datetime,timedelta
+import calcWindPower
+import calcSolarPower
 import math
-from epiasFuncs import getTableCount,getColumnCountByTable,addColumnToTable
 import json
+import sys
+
+
+def addColumnToTable(tableName,columnDescTxt):
+
+    try:
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+        if getTableCount(tableName)>0:
+            
+            insertTXT="ALTER TABLE "+tableName+" ADD COLUMN "+columnDescTxt
+
+            cursor=myDBConnect.cursor()
+
+            cursor.execute(insertTXT)
+
+            myDBConnect.commit()
+
+        
+
+            return True
+
+    except:
+
+        return False
+
+def getColumnCountByTable(tableName,columnName):
+
+    selectTXT="SELECT count(*) FROM information_schema.COLUMNS  WHERE  TABLE_NAME = '"+tableName+"' AND COLUMN_NAME = '"+columnName+"'"
+    
+    try:
+   
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        cursor=myDBConnect.cursor()
+        
+        cursor.execute(selectTXT)
+    
+        siteCountColumn = cursor.fetchall()
+
+        myDBConnect.commit()
+        
+        myDBConnect.close()
+
+        return siteCountColumn[0][0]
+        
+    except:
+
+        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
+
+def getTableCount(tableName):
+
+  
+
+    selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
+
+    try:
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+        cursor=myDBConnect.cursor()
+        
+        cursor.execute(selectTXT)
+    
+        siteCountTable = cursor.fetchall()
+
+        myDBConnect.close()
+
+        return siteCountTable[0][0]
+        
+
+    except:
+
+        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")
+
 
 def wind_convert(u,v):
     conv = 45 / math.atan(1)
@@ -14,8 +99,9 @@ def wind_convert(u,v):
     #wind_dir = 180 + (180 / math.pi) * math.atan2(v,u)
     return wind_speed,wind_dir
 
-def readwriteNCGFS(filePath,siteList,siteGridListDF):
+def readwriteNC(filePath,siteList,siteGridListDF,modelGridListDF,modelNo):
 
+    baslangicZmn=datetime.now()
 
     f=nc.Dataset(filePath)
 
@@ -39,34 +125,310 @@ def readwriteNCGFS(filePath,siteList,siteGridListDF):
     flat  = f.variables['XLAT']
 
     flon  = f.variables['XLONG']
+    
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
 
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
+    siteTimeList=[]
+    
+    for gridRow in range(0,modelGridListDF.size):
+        
+        gecensure=((datetime.now()-baslangicZmn).total_seconds()/60)
 
-    for site in siteList:
+        print(str(gridRow+1)+"/"+str(gecensure))
+
         #testDF=pd.DataFrame(siteList,columns=[""])
 
-        siteGridListRowDF=siteGridListDF[siteGridListDF["siteId"]==site[0]]
-
-        siteGridListRowDF=siteGridListRowDF[siteGridListRowDF["meteoModelListId"]==1]
+        startTime=pd.to_datetime(timeTotxt(ftime[0]))+timedelta(hours=3)
+     
         
-        print(siteGridListRowDF)
+        for site in siteList:
 
-        tblCount=getTableCount("trainTable_"+str(site[0]))
+            siteGridListRowDF=siteGridListDF[siteGridListDF["siteId"]==site[0]]
 
-        if tblCount==0:
-            addSiteTrainDataTable("trainTable_"+str(site[0]))
+            siteGridListRowDF=siteGridListRowDF[siteGridListRowDF["meteoModelListId"]==int(modelNo)]
 
-        if siteGridListDF.shape[0]==0:
-            addSiteGridList(site,1,1,2)
+            siteGridListRowDF=siteGridListRowDF[siteGridListRowDF["modelGridListId"]==modelGridListDF.loc[gridRow]["modelGridListId"]]
+                       
+            tableName="trainTable_"+str(site[0])
+                      
+            vWS10=[]
+            vWS50=[]
+            vWS100=[]
+            vT2=[]
+            vRH=[]
+            vPrec=[]
+            vSnow=[]
+            vPSFC=[]
+            vGHI=[]
+            vDIFF=[]
+            vCloundIndex=[]
+
+            if siteGridListRowDF.shape[0]>0:
 
 
 
+                print(str(datetime.now())+" Grid" +"/"+str(site[1])+"/"+str(siteGridListDF.loc[gridRow]["modelGridListId"]))
+                
+                xGridNo=siteGridListRowDF.iloc[0]["xGrid"]
 
+                yGridNo=siteGridListRowDF.iloc[0]["yGrid"]
+
+                columnBool=False
+
+                tblCount=getTableCount("trainTable_"+str(site[0]))
+
+                if tblCount==0:
+                    addSiteTrainDataTable("trainTable_"+str(site[0]))
+
+                valueArr=[]
+                columnValueList=""
+
+                lastTime=ftime[ftime.shape[0]-1]
+
+                lastDate=startTime+timedelta(hours=96)
+                
+                # if (pd.to_datetime(timeTotxt(ftime[ftime.shape[0]-1]))-datetime.now()).total_seconds()<0:
+                #     lastDate=startTime+timedelta(hours=34)
+
+                dataTime=pd.to_datetime(timeTotxt(ftime[ftime.shape[0]-1]))
+
+                for timeNo in range(0,ftime.shape[0]-1):
+                    valueList=[]
+                    dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
+            
+                    if dataTime>(startTime+timedelta(hours=9)) :
+                        
+                        if pd.to_datetime(dataTime).minute==0:
+                                                        
+                            if (tableName in siteTimeList)==False:
+                                timestampCount=countTimeStamp(tableName,dataTime)
+                                siteTimeList.append(tableName)
+
+                            if len(vWS10)>0:
+                            
+                                if site[2]==1:
+                                    
+                                    powerWSList=[]
+                                    wS,wD=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
+                                    vWS10.append(wS)
+                                    vWD10=wD
+
+                                    columName="WS10_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+                                
+                                        if columnValueList=="":
+                                            columnValueList=columName+"=%s"
+                                        else:
+                                            columnValueList+=","+columName+"=%s"
+
+                                    
+                                     
+                                    columName="f_WS10_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    ws10=np.round(np.mean(vWS10),3)
+                                    powerWSList.append(ws10)
+
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                                
+
+
+                                ##GÜÇ KONTROLÜ EKLE
+                                ##3 haneye yuvarla
+                                    wS,wD=wind_convert(fu50[timeNo,yGridNo,xGridNo],fv50[timeNo,yGridNo,xGridNo])
+                                    vWS50.append(wS)
+                                    vWD50=wD
+
+                                    columName="WS50_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                                
+                                        if columnValueList=="":
+                                            columnValueList=columName+"=%s"
+                                        else:
+                                            columnValueList+=","+columName+"=%s"
+
+                                    
+
+                                    columName="f_WS50_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+                                                                      
+                                    
+
+                                    ws50=np.round(np.mean(vWS50),3)
+                                    powerWSList.append(ws50)
+
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                                
+
+                                    wS,wD=wind_convert(fu100[timeNo,yGridNo,xGridNo],fv100[timeNo,yGridNo,xGridNo])
+                                    vWS100.append(wS)
+                                    vWD100=wD
+
+                                    columName="WS100_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+    
+                                        if columnValueList=="":
+                                            columnValueList=columName+"=%s"
+                                        else:
+                                            columnValueList+=","+columName+"=%s"                     
+                            
+                                    
+
+                                    columName="f_WS100_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    
+
+                                    ws100=np.round(np.mean(vWS100),3)
+                                    powerWSList.append(ws100)
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                               
+
+                                    columName="T2_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                                        if columnValueList=="":
+                                            columnValueList=columName+"=%s"
+                                        else:
+                                            columnValueList+=","+columName+"=%s"
+
+                                    vT2.append(ft2[timeNo,yGridNo,xGridNo])
+
+
+
+                                    t2=float(np.round(np.mean(vT2),3))
+
+                                    columName="PSFC_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)
+
+                                    vPSFC.append(fpsfc[timeNo,yGridNo,xGridNo])
+                                    if columnBool==False:
+                                        if getColumnCountByTable(tableName,columName)==0:
+                                            addColumnToTable(tableName,columName+" double DEFAULT NULL")
+
+                                    
+                                
+                                        if columnValueList=="":
+                                            columnValueList=columName+"=%s"
+                                        else:
+                                            columnValueList+=","+columName+"=%s"
+
+                                    psfc=float(np.round(np.mean(vPSFC),3))
+
+                                    # powerList=calcWindPower.windPowerLİst(site,16,powerWSList)
+
+                                    # for pwr in range(0,len(powerList)):
+                                    #     if powerList[pwr]>site[6]:
+                                    #         powerList[pwr]=site[6]
+
+                                        
+
+                                    # if columnBool==False:
+                                    #     columnValueList+=",f_WS10_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)+"=%s"
+                                    #     columnValueList+=",f_WS50_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)+"=%s"
+                                    #     columnValueList+=",f_WS100_"+str(siteGridListDF.loc[gridRow]["modelGridListId"])+"_"+str(modelNo)+"=%s"
+                                    
+                                    # valueArr.append((ws10,ws50,ws100,t2,psfc,powerList[0],powerList[1],powerList[2],pd.to_datetime(dataTime)))
+                                    valueArr.append((ws10,ws50,ws100,t2,psfc,pd.to_datetime(dataTime)))
+
+                                columnBool=True
+
+                        else:
+
+                            if site[2]==1:
+
+                                wS,wD=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
+                                vWS10.append(wS)
+                                    
+                                wS,wD=wind_convert(fu50[timeNo,yGridNo,xGridNo],fv50[timeNo,yGridNo,xGridNo])
+                                vWS50.append(wS)
+                                    
+                                wS,wD=wind_convert(fu100[timeNo,yGridNo,xGridNo],fv100[timeNo,yGridNo,xGridNo])
+                                vWS100.append(wS)
+
+                                vT2.append(ft2[timeNo,yGridNo,xGridNo])
+
+                                vPSFC.append(fpsfc[timeNo,yGridNo,xGridNo])           
+
+                #updateTrainTable(columnValueList,dataTime,tableName,myDBConnect)               
+                updateTXT="Update "+tableName+" Set "+columnValueList+" where timestamp=%s"
+                
+                cursor=myDBConnect.cursor()
+                
+                cursor.executemany(updateTXT,valueArr)
+    
+                myDBConnect.commit()
+                
+                print(dataTime)
+                print("plantCount"+str(len(siteTimeList)))
+
+                
+    myDBConnect.close()
+
+
+def updateTrainTable(columnValueList,timestamp,tableName,dbConnect):
+
+       
+    updateTxt="Update "+tableName+" Set "+columnValueList+" where  timestamp='"+str(timestamp)+"'"
+    
+
+    
+    
+
+
+def countTimeStamp(tableName,timestamp):
+    
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
+    
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    selectTxt="Select * From "+tableName+" where timestamp='"+str(timestamp)+"'"
+    
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
+    
+    timeTable = cursor.fetchall()
+
+    myDBConnect.commit()
+
+    if len(timeTable)==0:
         
-        for gridRow in siteGridListRowDF.index:
-            xGrid=siteGridListRowDF["xGrid"][gridRow]
-            yGrid=siteGridListRowDF["yGrid"][gridRow]
-            print(ft2[0,yGrid,xGrid])
+        insertTxt="Insert Into "+tableName+" (timestamp) VALUES('"+str(timestamp)+"')"
+    
+        cursor=myDBConnect.cursor()
+            
+        cursor.execute(insertTxt)
+    
+        myDBConnect.commit()
 
+       
+    return len(timeTable)
 
 
 def addSiteGridList(site,modelNo,yakinEkle,uzakekle):
@@ -90,6 +452,8 @@ def addSiteGridList(site,modelNo,yakinEkle,uzakekle):
     
     gridTable = cursor.fetchall()
 
+    gridTableDF=pd.DataFrame(gridTable,columns=["id","modelId","xGridNo","yGridNo","xLon","yLat"])
+    
     if len(gridTable)<=0:
         return -9999
     
@@ -120,18 +484,50 @@ def addSiteGridList(site,modelNo,yakinEkle,uzakekle):
             selectedGridXLon=gridRowNo[4]
             tmpDistance=gridDistance
 
+    selectedGrids=[]
+   
+    if siteLat>selectedGridYLat:
 
-    if siteLat<selectedGridYLat:
-        ustLatGridNo=selectedGridY+yakinEkle
-        altLatGridNo=selectedGridY-uzakekle
-    else:
         ustLatGridNo=selectedGridY+uzakekle
         altLatGridNo=selectedGridY-yakinEkle
+
+    else:
+
+        ustLatGridNo=selectedGridY+yakinEkle
+        altLatGridNo=selectedGridY-uzakekle
+
+    
     if siteLng<selectedGridXLon:
+
+        ustLonGridNo=selectedGridX+uzakekle
+        altLonGridNo=selectedGridX-yakinEkle
+
+    else:
+
         ustLonGridNo=selectedGridX+yakinEkle
         altLonGridNo=selectedGridX-uzakekle
+    
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="musteriDB")
 
+    insertTXT="Insert Into siteGridList (siteId,modelGridListId,meteoModelListId,xGrid,yGrid) VALUES(%s,%s,%s,%s,%s)"
 
+    for yGridNo in range(altLatGridNo,ustLatGridNo+1):
+
+        for xGridNo in range(altLonGridNo,ustLonGridNo+1):
+
+            gridTableTmpDF=gridTableDF[(gridTableDF["xGridNo"]==xGridNo) & (gridTableDF["yGridNo"]==yGridNo)]
+           
+            selectedGrids.append((site[0],gridTableTmpDF.iloc[0]["id"],modelNo,xGridNo,yGridNo))
+    
+    cursor=myDBConnect.cursor()
+
+    cursor.executemany(insertTXT,selectedGrids)
+
+    myDBConnect.commit()
+
+    myDBConnect.close()
+
+    return selectedGrids        
 
 def calcDistance(siteLat,siteLon,yLat,xLon):
 
@@ -179,34 +575,53 @@ def timeTotxt(timeTXT):
     return timeTotxt
 
 
-with open("config.json","r") as file:
+
+def runNCWriter(modelNo,filePath):
 
 
-    dbApiInfo=json.load(file)
+    with open("config.json","r") as file:
 
-myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        dbApiInfo=json.load(file)
 
-selectTxt="Select * From siteList where epiasEIC > 0"
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
-cursor=myDBConnect.cursor()
+    selectTxt="Select * From siteList where epiasEIC > 0"
+
+    cursor=myDBConnect.cursor()
             
-cursor.execute(selectTxt)
+    cursor.execute(selectTxt)
     
-siteTable = cursor.fetchall()
+    siteTable = cursor.fetchall()
 
+    
 
-selectTxt="Select * From siteGridList"
+    selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId="+str(modelNo)
 
-
-cursor.execute(selectTxt)
-
-
+    cursor.execute(selectTxt)
  
-siteGridTable = cursor.fetchall()
+    siteGridTable = cursor.fetchall()
+    
+    siteGridTableDF=pd.DataFrame(siteGridTable,columns=["siteId","modelGridListId","meteoModelListId","xGrid","yGrid"])
 
-myDBConnect.close()
+   
+    selectTxt="SELECT distinct(modelGridListId) FROM musteriDB.siteGridList where meteoModelListId="+str(modelNo)
 
-siteGridTableDF=pd.DataFrame(siteGridTable,columns=["id","siteId","modelGridList","meteoModelListId","useInTrain","calcParamList","calcType","xGrid","yGrid"])
+    cursor=myDBConnect.cursor()
+    
+    cursor.execute(selectTxt)
+    
+    modelGridList = cursor.fetchall()
 
-readwriteNCGFS("I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc",siteTable,siteGridTableDF)
+    modelGridListDF=pd.DataFrame(modelGridList,columns=["modelGridListId"])
+
+    readwriteNC(filePath,siteTable,siteGridTableDF,modelGridListDF,modelNo)
+
+
+#runNCWriter(sys.argv[1],sys.argv[2])
+
+runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
+
+# runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
+
+
 

@@ -8,9 +8,175 @@ import sys
 #request sertifika hatası almamak için
 requests.packages.urllib3.disable_warnings()
 
+def getOrganizationInfo(orgId):
+
+    try:
+
+        with open("config.json","r") as file:
+
+            dbApiInfo=json.load(file)
+
+
+        selectTXT="Select * From epiasCompanyList where id="+str(orgId)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        cursor=myDBConnect.cursor()
+        
+        orgList=cursor.execute(selectTXT)
+
+        orgList=cursor.fetchall()
+
+        myDBConnect.commit()
+
+        myDBConnect.close()
+
+        for org in orgList:
+
+            return org
+
+    except:
+
+        return "-9999"
+
+def getColumnCountByTable(tableName,columnName):
+
+    selectTXT="SELECT count(*) FROM information_schema.COLUMNS  WHERE  TABLE_NAME = '"+tableName+"' AND COLUMN_NAME = '"+columnName+"'"
+    
+    try:
+   
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+        
+        cursor=myDBConnect.cursor()
+        
+        cursor.execute(selectTXT)
+    
+        siteCountColumn = cursor.fetchall()
+
+        myDBConnect.commit()
+        
+        myDBConnect.close()
+
+        return siteCountColumn[0][0]
+        
+    except:
+
+        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
+
+def addSiteDataTable(tableName):
+    try:
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+        cursor=myDBConnect.cursor()
+
+        cursor.callproc("createSiteDataTable",[tableName,])
+        
+        myDBConnect.close()
+
+        return True
+
+    except:
+
+        return False
+
+def addColumnToTable(tableName,columnDescTxt):
+
+    try:
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+        if getTableCount(tableName)>0:
+            
+            insertTXT="ALTER TABLE "+tableName+" ADD COLUMN "+columnDescTxt
+
+            cursor=myDBConnect.cursor()
+
+            cursor.execute(insertTXT)
+
+            myDBConnect.commit()
+
+        
+
+            return True
+
+    except:
+
+        return False
+        
+def getEpiasProductionId(epiasEIC,productionDate):
+    
+    with open("config.json","r") as file:
+        dbApiInfo=json.load(file)
+
+    apiUrl=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation-power-plant-list?"
+
+    paramList={"period":productionDate}
+
+    response = requests.get(apiUrl,params=paramList,verify=False,timeout=30)
+
+    planList=response.json()
+
+    plantSelect=""
+
+    
+    if planList["resultDescription"]=="success":
+
+        for plant in planList["body"]["powerPlantList"]:
+            
+            if plant["eic"]==epiasEIC:
+
+                if plantSelect=="":
+
+                    plantSelect=str(plant["id"])
+
+                else:
+
+                    plantSelect+=","+str(plant["id"])
+    
+
+    return plantSelect
+
+    
 
 
 
+
+def getTableCount(tableName):
+
+  
+
+    selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
+
+    try:
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+        cursor=myDBConnect.cursor()
+        
+        cursor.execute(selectTXT)
+    
+        siteCountTable = cursor.fetchall()
+
+        myDBConnect.close()
+
+        return siteCountTable[0][0]
+        
+
+    except:
+
+        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")
 
 def updateSitesEpiasAIC():
 
@@ -262,7 +428,7 @@ def startProcess():
 
 def updateSiteAIC(site):
 
-    try:
+   
 
         with open("config.json","r") as file:
 
@@ -380,11 +546,10 @@ def updateSiteAIC(site):
             
             return startDate
 
-    except:
 
-        return "-9999"
 
 def dropSiteTable(tableName):
+
     queryTXT="Drop table "
 
 
@@ -437,19 +602,21 @@ def updateSiteKUDUP(site):
 
             for row in range(0,kudupDF.shape[0]):
 
-                dateTMP=pd.to_datetime(kudupDF["tarih"][row])
+                if kudupDF["toplam"][row]!=None and str(kudupDF["toplam"][row])!='nan':
+                    
+                    dateTMP=pd.to_datetime(kudupDF["tarih"][row])
 
-                dateTMP=str(dateTMP).replace("+03:00","")
+                    dateTMP=str(dateTMP).replace("+03:00","")
             
-                lastDateTime=dateTMP
+                    lastDateTime=dateTMP
 
-                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KUDUP = NULL where timeStamp='"+str(dateTMP)+"'"
+                    updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KUDUP = NULL where timeStamp='"+str(dateTMP)+"'"
 
-                cursor.execute(updateTMPTxt)
+                    cursor.execute(updateTMPTxt)
 
-                myDBConnect.commit()
+                    myDBConnect.commit()
 
-                dataList.append((str(kudupDF["toplam"][row]*1000),dateTMP))
+                    dataList.append((str(kudupDF["toplam"][row]*1000),dateTMP))
                         
 
             cursor.executemany(updateTXT,dataList)
@@ -465,14 +632,15 @@ def updateSiteKUDUP(site):
                 dataList=[]
 
                 for row in range(0,kudupDF.shape[0]):
+                    if kudupDF["toplam"][row]!=None and str(kudupDF["toplam"][row])!='nan':
 
-                    dateTMP=pd.to_datetime(kudupDF["tarih"][row])
+                        dateTMP=pd.to_datetime(kudupDF["tarih"][row])
 
-                    dateTMP=str(dateTMP).replace("+03:00","")
+                        dateTMP=str(dateTMP).replace("+03:00","")
             
-                    lastDateTime=dateTMP
+                        lastDateTime=dateTMP
 
-                    dataList.append((dateTMP,str(kudupDF["toplam"][row]*1000)))
+                        dataList.append((dateTMP,str(kudupDF["toplam"][row]*1000)))
 
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KUDUP) VALUES(%s,%s)"
@@ -536,7 +704,7 @@ def updateSiteKUDUP(site):
 #update Site KGUP       
 def updateSiteKGUP(site):
 
-    try:
+    
 
         with open("config.json","r") as file:
 
@@ -572,7 +740,7 @@ def updateSiteKGUP(site):
 
             endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
 
-            kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,startDate)
+            kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,endDate)
 
         
             updateTXT="Update siteDataList_"+str(site[0]) +" Set KGUP=%s where timeStamp=%s"
@@ -582,21 +750,27 @@ def updateSiteKGUP(site):
             lastDateTime=""
 
             for row in range(0,kgupDF.shape[0]):
+                try:
+                    
+                    if kgupDF["toplam"][row]!=None and str(kgupDF["toplam"][row])!='nan':
 
-                dateTMP=pd.to_datetime(kgupDF["tarih"][row])
+                        dateTMP=pd.to_datetime(kgupDF["tarih"][row])
 
-                dateTMP=str(dateTMP).replace("+03:00","")
+                        dateTMP=str(dateTMP).replace("+03:00","")
             
-                lastDateTime=dateTMP
+                        lastDateTime=dateTMP
                 
-                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KGUP = NULL where timeStamp='"+str(dateTMP)+"'"
+                        updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set KGUP = NULL where timeStamp='"+str(dateTMP)+"'"
 
-                cursor.execute(updateTMPTxt)
+                        cursor.execute(updateTMPTxt)
 
-                myDBConnect.commit()
+                        myDBConnect.commit()
 
-                dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
-                        
+                        dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
+
+                except:
+
+                    dataList.append(("-9999",dateTMP))
 
             cursor.executemany(updateTXT,dataList)
 
@@ -605,20 +779,22 @@ def updateSiteKGUP(site):
             rowCount=cursor.rowcount
 
             if rowCount<=0:
-
+                
                 lastDateTime=""
 
                 dataList=[]
 
                 for row in range(0,kgupDF.shape[0]):
 
-                    dateTMP=pd.to_datetime(kgupDF["tarih"][row])
+                    if kgupDF["toplam"][row]!=None and str(kgupDF["toplam"][row])!='nan':
+                        
+                        dateTMP=pd.to_datetime(kgupDF["tarih"][row])
 
-                    dateTMP=str(dateTMP).replace("+03:00","")
+                        dateTMP=str(dateTMP).replace("+03:00","")
             
-                    lastDateTime=dateTMP
+                        lastDateTime=dateTMP
 
-                    dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
+                        dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
 
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
@@ -643,11 +819,7 @@ def updateSiteKGUP(site):
 
                     myDBConnect.commit()
 
-                    updateTXT="Update siteDataList_"+str(site[0])  +" Set kgupActErr=KGUP-actualProduction where timeStamp='"+str(dateTMP)+"'"
-                                
-                    cursor.execute(updateTXT)
 
-                    myDBConnect.commit()
 
                 
 
@@ -673,42 +845,11 @@ def updateSiteKGUP(site):
             
             return startDate
 
-    except:
-
-        return "-9999"
 
 
 
-def getOrganizationInfo(orgId):
-
-    try:
-
-        with open("config.json","r") as file:
-
-            dbApiInfo=json.load(file)
 
 
-        selectTXT="Select * From epiasCompanyList where id="+str(orgId)
-
-        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-        
-        cursor=myDBConnect.cursor()
-        
-        orgList=cursor.execute(selectTXT)
-
-        orgList=cursor.fetchall()
-
-        myDBConnect.commit()
-
-        myDBConnect.close()
-
-        for org in orgList:
-
-            return org
-
-    except:
-
-        return "-9999"
 
 
 def updateSiteProduction(site):
@@ -762,20 +903,21 @@ def updateSiteProduction(site):
             lastDateTime=""
 
             for row in range(0,productionDF.shape[0]):
+                if productionDF["total"][row]!=None and str(productionDF["total"][row])!='nan':
 
-                dateTMP=pd.to_datetime(productionDF["date"][row])
+                    dateTMP=pd.to_datetime(productionDF["date"][row])
 
-                dateTMP=str(dateTMP).replace("+03:00","")
+                    dateTMP=str(dateTMP).replace("+03:00","")
             
-                lastDateTime=dateTMP
+                    lastDateTime=dateTMP
 
-                updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set realProduction = NULL where timeStamp='"+str(dateTMP)+"'"
+                    updateTMPTxt="Update siteDataList_"+str(site[0]) +" Set realProduction = NULL where timeStamp='"+str(dateTMP)+"'"
 
-                cursor.execute(updateTMPTxt)
+                    cursor.execute(updateTMPTxt)
 
-                myDBConnect.commit()
+                    myDBConnect.commit()
 
-                dataList.append((str(productionDF["total"][row]*1000),dateTMP))
+                    dataList.append((str(productionDF["total"][row]*1000),dateTMP))
                         
 
             cursor.executemany(updateTXT,dataList)
@@ -791,14 +933,16 @@ def updateSiteProduction(site):
                 dataList=[]
 
                 for row in range(0,productionDF.shape[0]):
+                    
+                    if productionDF["total"][row]!=None and str(productionDF["total"][row])!='nan':
+                        
+                        dateTMP=pd.to_datetime(productionDF["date"][row])
 
-                    dateTMP=pd.to_datetime(productionDF["date"][row])
-
-                    dateTMP=str(dateTMP).replace("+03:00","")
+                        dateTMP=str(dateTMP).replace("+03:00","")
             
-                    lastDateTime=dateTMP
+                        lastDateTime=dateTMP
 
-                    dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
+                        dataList.append((dateTMP,str(productionDF["total"][row]*1000)))
 
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,realProduction) VALUES(%s,%s)"
@@ -926,7 +1070,7 @@ def getEpiasKUDUP(organizationEIC,epiasOrgEIC,starDate,endDate):
 #Epias KGUP Verisi
 def getEpiasKGUP(organizationEIC,epiasOrgEIC,starDate,endDate):
 
-    try:
+    
 
         with open("config.json","r") as file:
             dbApiInfo=json.load(file)
@@ -944,9 +1088,7 @@ def getEpiasKGUP(organizationEIC,epiasOrgEIC,starDate,endDate):
     
         return responseDF
 
-    except:
 
-        return "hata"
 
 #Epias Üretim Verisi
 def getEpiasProduction(epiasEIC,starDate,endDate,isTurkey=False):
@@ -1014,147 +1156,32 @@ def getEpiasProduction(epiasEIC,starDate,endDate,isTurkey=False):
 
 
 
-def addSiteDataTable(tableName):
-    try:
-        with open("config.json","r") as file:
-            dbApiInfo=json.load(file)
-
-
-        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-
-        cursor=myDBConnect.cursor()
-
-        cursor.callproc("createSiteDataTable",[tableName,])
-        
-        myDBConnect.close()
-
-        return True
-
-    except:
-
-        return False
-
-
-def addColumnToTable(tableName,columnDescTxt):
-
-    try:
-        with open("config.json","r") as file:
-            dbApiInfo=json.load(file)
-        
-        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-
-        if getTableCount(tableName)>0:
-            
-            insertTXT="ALTER TABLE "+tableName+" "+columnDescTxt
-
-            cursor=myDBConnect.cursor()
-
-            cursor.execute(insertTXT)
-
-            myDBConnect.commit()
-
-            myDBConnect.close()
-
-            return True
-
-    except:
-
-        return False
 
 
 
-def getEpiasProductionId(epiasEIC,productionDate):
+
+
+
+
+
+
+
+
+def startProcess(processId):
+    if processId==-1:
+        updateSitesEpiasAIC()
     
-    with open("config.json","r") as file:
-        dbApiInfo=json.load(file)
+    if processId==-2:
+        updateSitesEpiasKGUP()
 
-    apiUrl=dbApiInfo["seffafApi"]["apiUrl"]+"production/real-time-generation-power-plant-list?"
+    if processId==-3:
+        updateSitesEpiasKUDUP()
 
-    paramList={"period":productionDate}
-
-    response = requests.get(apiUrl,params=paramList,verify=False,timeout=30)
-
-    planList=response.json()
-
-    plantSelect=""
-
-    
-    if planList["resultDescription"]=="success":
-
-        for plant in planList["body"]["powerPlantList"]:
-            
-            if plant["eic"]==epiasEIC:
-
-                if plantSelect=="":
-
-                    plantSelect=str(plant["id"])
-
-                else:
-
-                    plantSelect+=","+str(plant["id"])
-    
-
-    return plantSelect
-
-    
-
-def getColumnCountByTable(tableName,columnName):
-
-    selectTXT="SELECT count(*) FROM information_schema.COLUMNS  WHERE  TABLE_NAME = '"+tableName+"' AND COLUMN_NAME = '"+columnName+"'"
-    
-    try:
-   
-        with open("config.json","r") as file:
-            dbApiInfo=json.load(file)
-
-        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-        
-        cursor=myDBConnect.cursor()
-        
-        cursor.execute(selectTXT)
-    
-        siteCountColumn = cursor.fetchall()
-
-        myDBConnect.close()
-
-        return siteCountColumn[0][0]
-        
-    except:
-
-        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")   
+    if processId==-4:
+        updateSitesEpiasProduction()
 
 
-def getTableCount(tableName):
-
-  
-
-    selectTXT="SELECT count(*)   FROM  information_schema.TABLES  WHERE  TABLE_NAME = '"+tableName+"'" 
-
-    try:
-
-        with open("config.json","r") as file:
-            dbApiInfo=json.load(file)
-
-        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-
-        cursor=myDBConnect.cursor()
-        
-        cursor.execute(selectTXT)
-    
-        siteCountTable = cursor.fetchall()
-
-        myDBConnect.close()
-
-        return siteCountTable[0][0]
-        
-
-    except:
-
-        print("Tablo Sayısı Kontrol Edilirken Hata Oluştu")
-
-
-
-
+#startProcess(sys.argv[1])
 
 
 
