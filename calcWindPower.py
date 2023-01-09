@@ -203,7 +203,8 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
 
             cTmpPower=calcWindPower(wsValue,site[airDensityColumnNumber],powerCurveTable,str(wtg[3]))
     
-            cpowerList.append(cTmpPower*wtg[4])
+        
+        cpowerList.append(cTmpPower*wtg[4])
 
     return cpowerList
 
