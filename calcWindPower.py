@@ -15,6 +15,8 @@ def calcWindPower(windSpeed,airDensity,powerCurveTable,powerCurveId):
 
     tmpAirDensityDiff=-9999
     selectedAirDensity=-9999
+
+
     for powerCurveRow in powerCurveTable:
         
 
@@ -125,7 +127,7 @@ def windPower(site,airDensityColumnNumber,windSpeed):
     return cPower
 
 
-def windPowerLİst(site,airDensityColumnNumber,windSpeedList):
+def windPowerList(site,airDensityColumnNumber,windSpeedList):
 
     with open("config.json","r") as file:
 
