@@ -704,7 +704,8 @@ def updateSiteKUDUP(site):
 #update Site KGUP       
 def updateSiteKGUP(site):
 
-    
+        if site[2]==2222:
+            return -9999
 
         with open("config.json","r") as file:
 
@@ -719,7 +720,6 @@ def updateSiteKGUP(site):
         cursor.execute(selectTxt)
     
         siteTable = cursor.fetchall()
-
 
         cursor=myDBConnect.cursor()
 
@@ -736,13 +736,18 @@ def updateSiteKGUP(site):
 
         if (pd.to_datetime(startDate)-(datetime.now()+timedelta(days=1))).total_seconds()<0:
             
-            orgEpias=getOrganizationInfo(site[7])
+            if site[2]<10:
 
-            endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
+                orgEpias=getOrganizationInfo(site[7])
 
-            kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,endDate)
+                endDate=str(pd.to_datetime(startDate)+timedelta(days=10))
 
-        
+                kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,endDate)
+
+            else:
+                
+                kgupDF=getEpiasKGUPTurkey(startDate,endDate)
+
             updateTXT="Update siteDataList_"+str(site[0]) +" Set KGUP=%s where timeStamp=%s"
        
             dataList=[]
@@ -766,7 +771,14 @@ def updateSiteKGUP(site):
 
                         myDBConnect.commit()
 
-                        dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
+                        if site[2]==1111:
+
+                            dataList.append((str(kgupDF["ruzgar"][row]*1000),dateTMP))
+
+                        else:
+
+                            dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
+                           
 
                 except:
 
@@ -794,8 +806,14 @@ def updateSiteKGUP(site):
             
                         lastDateTime=dateTMP
 
-                        dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
+                        if site[2]==1111:
 
+                            dataList.append((dateTMP,str(kgupDF["ruzgar"][row]*1000)))
+
+                        else:
+
+                            dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
+                        
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
 
@@ -1088,6 +1106,26 @@ def getEpiasKGUP(organizationEIC,epiasOrgEIC,starDate,endDate):
     
         return responseDF
 
+
+#Epias KGUP Verisi
+def getEpiasKGUPTurkey(site,starDate,endDate):
+   
+
+        with open("config.json","r") as file:
+            dbApiInfo=json.load(file)
+               
+
+        apiURL=dbApiInfo["seffafApi"]["apiUrl"]+"production/dpp"
+             
+        paramList={"startDate":starDate,"endDate":endDate}
+
+        response=requests.get(apiURL,params=paramList,verify=False,timeout=30)
+
+        kgupList=response.json()
+
+        responseDF=pd.DataFrame(kgupList["body"]["dppList"])
+    
+        return responseDF
 
 
 #Epias Üretim Verisi
