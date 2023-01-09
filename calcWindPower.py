@@ -112,16 +112,29 @@ def windPower(site,airDensityColumnNumber,windSpeed):
     
     wtgLibTable = cursor.fetchall()
 
-    myDBConnect.close()
+    
 
     if len(wtgLibTable)<=0:
 
         return -9999
 
+    selectTxt="Select * From powerCurve where powerCurveId="+str(wtgLibTable[0][3])
 
-    cPower=calcWindPower(windSpeed,site[airDensityColumnNumber],wtgLibTable[0][3])
+    cursor=myDBConnect.cursor()
+            
+    cursor.execute(selectTxt)
     
-    cPower=cPower*wtgTable[0][4]
+    myDBConnect.commit()
+
+    powerCurveTable = cursor.fetchall()
+
+    cPower=0
+
+    for wtg in wtgLibTable:
+
+        cTmpPower=calcWindPower(windSpeed,site[airDensityColumnNumber],powerCurveTable,str(wtg[3]))
+       
+        cPower+=cTmpPower*wtg[4]
     
 
     return cPower
@@ -138,12 +151,12 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
 
     selectTxt="Select * From sitewtgList where siteId="+str(site[0])
 
-
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
     
     wtgTable = cursor.fetchall()
+
 
     myDBConnect.close()
 
@@ -157,6 +170,8 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
+    
+    myDBConnect.commit()
     
     wtgLibTable = cursor.fetchall()
   
@@ -173,6 +188,8 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
             
     cursor.execute(selectTxt)
     
+    myDBConnect.commit()
+
     powerCurveTable = cursor.fetchall()
 
 
@@ -180,9 +197,13 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
     
     for wsValue in windSpeedList:
 
-        cPower=calcWindPower(wsValue,site[airDensityColumnNumber],powerCurveTable,str(wtgLibTable[0][3]))
+        cPower=0
+
+        for wtg in wtgLibTable:
+
+            cTmpPower=calcWindPower(wsValue,site[airDensityColumnNumber],powerCurveTable,str(wtg[3]))
     
-        cpowerList.append(cPower*wtgTable[0][4])
+            cpowerList.append(cTmpPower*wtg[4])
 
     return cpowerList
 
