@@ -15,6 +15,37 @@ client=MongoClient("mongodb://89.252.157.127:27017/")
 
 print(client)
 
+def waitTime(waitSecond):
+    waitTime=datetime.now()+timedelta(seconds=waitSecond)
+
+    while (waitTime-datetime.now()).total_seconds<0:
+        bekle=True
+
+    return
+
+def executeUpdateMany(connect,cursorTmp,updateText,dataList):
+    rowCount=-1
+
+    for i in range(0,4):
+
+        try:
+
+            cursorTmp.execute(updateText,dataList)
+
+            connect.commit()
+
+            rowCount=cursorTmp.rowcount
+
+        except:
+            waitTime(5)
+            if i<3:
+                continue
+            else:
+                raise
+            break
+    
+    return rowCount
+
 def getOrganizationInfo(orgId):
 
     try:
@@ -505,11 +536,13 @@ def updateSiteAIC(site):
                     dataList.append((str(aicDF["toplam"][row]*1000),dateTMP))
                         
 
-            cursor.executemany(updateTXT,dataList)
+            rowCount=executeUpdateMany(myDBConnect,cursor,updateTXT,dataList)
 
-            myDBConnect.commit()
+            # cursor.executemany(updateTXT,dataList)
 
-            rowCount=cursor.rowcount
+            # myDBConnect.commit()
+
+            # rowCount=cursor.rowcount
 
             if rowCount<=0:
 
@@ -855,11 +888,15 @@ def updateSiteKGUP(site):
                             bekle=True
                     
                         if i < 3:
+
                             continue
+
                         else:
+
                             raise
+
                         break
-                    
+
             else:
 
                 

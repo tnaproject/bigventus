@@ -1,4 +1,6 @@
+from pymongo import MongoClient
 import mysql.connector
+from dateutil import parser
 import json
 import requests
 import pandas as pd
@@ -7,6 +9,71 @@ from datetime import timedelta
 import sys
 #request sertifika hatası almamak için
 requests.packages.urllib3.disable_warnings()
+
+
+client=MongoClient("mongodb://89.252.157.127:27017/")
+
+print(client)
+
+def waitTime(waitSecond):
+    waitTime=datetime.now()+timedelta(seconds=waitSecond)
+
+    while (waitTime-datetime.now()).total_seconds<0:
+        bekle=True
+
+    return
+
+def executeMany(connect,cursorTmp,queryText,dataList):
+    rowCount=-1
+
+    for i in range(0,4):
+
+        try:
+
+            cursorTmp.execute(queryText,dataList)
+
+            connect.commit()
+
+            rowCount=cursorTmp.rowcount
+
+        except:
+
+            waitTime(5)
+            
+            if i<3:
+                continue
+            else:
+                raise
+            break
+    
+    return rowCount,cursorTmp
+
+
+def executeOne(connect,cursorTmp,queryText):
+
+    rowCount=-1
+
+    for i in range(0,4):
+
+        try:
+
+            cursorTmp.execute(queryText)
+
+            connect.commit()
+
+            rowCount=cursorTmp.rowcount
+
+        except:
+
+            waitTime(5)
+
+            if i<3:
+                continue
+            else:
+                raise
+            break
+    
+    return rowCount
 
 def getOrganizationInfo(orgId):
 
@@ -23,7 +90,7 @@ def getOrganizationInfo(orgId):
         
         cursor=myDBConnect.cursor()
         
-        orgList=cursor.execute(selectTXT)
+        cursor.execute(selectTXT)
 
         orgList=cursor.fetchall()
 
@@ -498,11 +565,13 @@ def updateSiteAIC(site):
                     dataList.append((str(aicDF["toplam"][row]*1000),dateTMP))
                         
 
-            cursor.executemany(updateTXT,dataList)
+            rowCount=executeMany(myDBConnect,cursor,updateTXT,dataList)
 
-            myDBConnect.commit()
+            # cursor.executemany(updateTXT,dataList)
 
-            rowCount=cursor.rowcount
+            # myDBConnect.commit()
+
+            # rowCount=cursor.rowcount
 
             if rowCount<=0:
 
@@ -526,11 +595,13 @@ def updateSiteAIC(site):
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,aic) VALUES(%s,%s)"
 
-                cursor.executemany(insertTXT,dataList)
+                rowCount=executeMany(myDBConnect,cursor,insertTXT,dataList)
 
-                myDBConnect.commit()
+                # cursor.executemany(insertTXT,dataList)
 
-                rowCount=cursor.rowcount
+                # myDBConnect.commit()
+
+                # rowCount=cursor.rowcount
 
                
 
@@ -630,11 +701,13 @@ def updateSiteKUDUP(site):
                     dataList.append((str(kudupDF["toplam"][row]*1000),dateTMP))
                         
 
-            cursor.executemany(updateTXT,dataList)
+            rowCount=executeMany(myDBConnect,cursor,updateTXT,dataList)
 
-            myDBConnect.commit()
+            # cursor.executemany(updateTXT,dataList)
 
-            rowCount=cursor.rowcount
+            # myDBConnect.commit()
+
+            # rowCount=cursor.rowcount
 
             if rowCount<=0:
 
@@ -656,11 +729,13 @@ def updateSiteKUDUP(site):
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KUDUP) VALUES(%s,%s)"
 
-                cursor.executemany(insertTXT,dataList)
+                rowCount=executeMany(myDBConnect,cursor,insertTXT,dataList)
 
-                myDBConnect.commit()
+                # cursor.executemany(insertTXT,dataList)
 
-                rowCount=cursor.rowcount
+                # myDBConnect.commit()
+
+                # rowCount=cursor.rowcount
 
             else:
 
@@ -753,7 +828,8 @@ def updateSiteKGUP(site):
 
             kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,endDate)
 
-        
+
+            
             updateTXT="Update siteDataList_"+str(site[0]) +" Set KGUP=%s where timeStamp=%s"
        
             dataList=[]
@@ -766,7 +842,7 @@ def updateSiteKGUP(site):
                     if kgupDF["toplam"][row]!=None and str(kgupDF["toplam"][row])!='nan':
 
                         dateTMP=pd.to_datetime(kgupDF["tarih"][row])
-
+                        dateTMP=parser.parse(kgupDF["tarih"][row])
                         dateTMP=str(dateTMP).replace("+03:00","")
             
                         lastDateTime=dateTMP
@@ -776,18 +852,26 @@ def updateSiteKGUP(site):
                         cursor.execute(updateTMPTxt)
 
                         myDBConnect.commit()
-
+                        
                         dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
 
                 except:
 
                     dataList.append(("-9999",dateTMP))
+            
+          
 
-            cursor.executemany(updateTXT,dataList)
 
-            myDBConnect.commit()
 
-            rowCount=cursor.rowcount
+            rowCount=executeMany(myDBConnect,cursor,updateTXT,dataList)
+
+                    # cursor.executemany(updateTXT,dataList)
+
+                    # myDBConnect.commit()
+
+                    # rowCount=cursor.rowcount
+
+
 
             if rowCount<=0:
                 
@@ -808,13 +892,18 @@ def updateSiteKGUP(site):
                         dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
 
 
+             
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
 
-                cursor.executemany(insertTXT,dataList)
+                rowCount=executeMany(myDBConnect,cursor,insertTXT,dataList)
 
-                myDBConnect.commit()
+                        # cursor.executemany(insertTXT,dataList)
 
-                rowCount=cursor.rowcount
+                        # myDBConnect.commit()
+
+                        # rowCount=cursor.rowcount
+                    
+
 
             else:
 
@@ -935,19 +1024,14 @@ def updateSiteProduction(site):
 
             rowCount=1
 
-            for i in range(0,tries):
-                try:
-                    cursor.executemany(updateTXT,dataList)
+            rowCount=executeMany(myDBConnect,cursor,updateTXT,dataList)
 
-                    myDBConnect.commit()
+                    # cursor.executemany(updateTXT,dataList)
 
-                    rowCount=cursor.rowcount
-                except:
-                    if i <tries-1:
-                        continue
-                    else:
-                        raise
-                break
+                    # myDBConnect.commit()
+
+                    # rowCount=cursor.rowcount
+
 
             if rowCount<=0:
 
@@ -969,12 +1053,14 @@ def updateSiteProduction(site):
 
 
                 insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,realProduction) VALUES(%s,%s)"
+                
+                rowCount=executeMany(myDBConnect,cursor,insertTXT,dataList)
 
-                cursor.executemany(insertTXT,dataList)
+                # cursor.executemany(insertTXT,dataList)
 
-                myDBConnect.commit()
+                # myDBConnect.commit()
 
-                rowCount=cursor.rowcount
+                # rowCount=cursor.rowcount
 
             else:
 
