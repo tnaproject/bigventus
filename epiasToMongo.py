@@ -1,4 +1,6 @@
+from pymongo import MongoClient
 import mysql.connector
+from dateutil import parser
 import json
 import requests
 import pandas as pd
@@ -7,6 +9,11 @@ from datetime import timedelta
 import sys
 #request sertifika hatası almamak için
 requests.packages.urllib3.disable_warnings()
+
+
+client=MongoClient("mongodb://89.252.157.127:27017/")
+
+print(client)
 
 def getOrganizationInfo(orgId):
 
@@ -753,7 +760,8 @@ def updateSiteKGUP(site):
 
             kgupDF=getEpiasKGUP(orgEpias[3],site[4],startDate,endDate)
 
-        
+
+            
             updateTXT="Update siteDataList_"+str(site[0]) +" Set KGUP=%s where timeStamp=%s"
        
             dataList=[]
@@ -766,7 +774,7 @@ def updateSiteKGUP(site):
                     if kgupDF["toplam"][row]!=None and str(kgupDF["toplam"][row])!='nan':
 
                         dateTMP=pd.to_datetime(kgupDF["tarih"][row])
-
+                        dateTMP=parser.parse(kgupDF["tarih"][row])
                         dateTMP=str(dateTMP).replace("+03:00","")
             
                         lastDateTime=dateTMP
@@ -776,18 +784,38 @@ def updateSiteKGUP(site):
                         cursor.execute(updateTMPTxt)
 
                         myDBConnect.commit()
-
+                        
                         dataList.append((str(kgupDF["toplam"][row]*1000),dateTMP))
 
                 except:
 
                     dataList.append(("-9999",dateTMP))
+            
+          
 
-            cursor.executemany(updateTXT,dataList)
+            for i in range(0,4):
 
-            myDBConnect.commit()
+                try:
 
-            rowCount=cursor.rowcount
+                    cursor.executemany(updateTXT,dataList)
+
+                    myDBConnect.commit()
+
+                    rowCount=cursor.rowcount
+
+                except:
+
+                    waitTime=datetime.now()+timedelta(seconds=3)
+
+                    while (waitTime-datetime.now()).total_seconds()<0
+                        bekle=True
+                    
+                    if i < 3:
+                        continue
+                    else:
+                        raise
+                    break
+
 
             if rowCount<=0:
                 
@@ -807,15 +835,31 @@ def updateSiteKGUP(site):
 
                         dataList.append((dateTMP,str(kgupDF["toplam"][row]*1000)))
 
+                for i in range(0,4):
+                
+                    try:
 
-                insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
+                        insertTXT="Insert Into siteDataList_"+str(site[0]) +" (timeStamp,KGUP) VALUES(%s,%s)"
 
-                cursor.executemany(insertTXT,dataList)
+                        cursor.executemany(insertTXT,dataList)
 
-                myDBConnect.commit()
+                        myDBConnect.commit()
 
-                rowCount=cursor.rowcount
+                        rowCount=cursor.rowcount
+                    
+                    except:
 
+                        waitTime=datetime.now()+timedelta(seconds=3)
+
+                        while (waitTime-datetime.now()).total_seconds()<0
+                            bekle=True
+                    
+                        if i < 3:
+                            continue
+                        else:
+                            raise
+                        break
+                    
             else:
 
                 

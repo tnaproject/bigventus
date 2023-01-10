@@ -210,16 +210,18 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
             if dataTime>(startTime+timedelta(hours=9)) :
                 
                 
-
+                
                 for siteGridNo in range(0,siteGridListRowDF.shape[0]):
                     modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
                     xGridNo=siteGridListRowDF.iloc[siteGridNo]["xGrid"]
 
                     yGridNo=siteGridListRowDF.iloc[siteGridNo]["yGrid"]
 
-                    print(dataTime)
+                    
 
                     if dataTime.minute==0:
+                        
+                        countTimeStamp(tableName,dataTime)
 
                         if site[2]==1:
                             wS,wD=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
@@ -311,7 +313,7 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                             siteGridValueDict[columnName]=np.round(float(meanWindDirection(vWD100[modelGridNo])),2)
 
                             #sıcaklık
-                            vT2[modelGridNo]=ft2[timeNo,yGridNo,xGridNo]
+                            vT2[modelGridNo].append(ft2[timeNo,yGridNo,xGridNo])
 
                             columnName="AVGT2_"+str(modelGridNo)+"_"+str(modelNo)
                             if columnName in columnNameValueList==False:
@@ -334,7 +336,7 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                             siteGridValueDict[columnName]=np.round(float(np.max(vT2[modelGridNo])),2)
 
                             #basınç
-                            vPSFC[modelGridNo]=ft2[timeNo,yGridNo,xGridNo]
+                            vPSFC[modelGridNo].append(ft2[timeNo,yGridNo,xGridNo])
 
                             columnName="AVGPSFC_"+str(modelGridNo)+"_"+str(modelNo)
                             if columnName in columnNameValueList==False:
@@ -383,10 +385,11 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                             vWD100[modelGridNo].append(wD)
 
                             #Sıcaklık
-                            vT2[modelGridNo]=ft2[timeNo,yGridNo,xGridNo]
+                            vT2[modelGridNo].append(ft2[timeNo,yGridNo,xGridNo])
 
                             #Basınç
-                            vPSFC[modelGridNo]=fpsfc[timeNo,yGridNo,xGridNo]
+                            vPSFC[modelGridNo].append(fpsfc[timeNo,yGridNo,xGridNo])
+
                         #dakika sıfır olmayan rüzgar Sonu:
                     
 

@@ -156,28 +156,28 @@ def EstimateEff(DNI,T,eref,ins,pcoeff):
 
 
 
-GHI=numpy.array([129.58856,154.87785,192.66818,217.51332,254.01997,277.66394])
+# GHI=numpy.array([129.58856,154.87785,192.66818,217.51332,254.01997,277.66394])
 
-t=numpy.array([278.0102,278.567,279.04688,279.55347,280.07114,280.56323])
+# t=numpy.array([278.0102,278.567,279.04688,279.55347,280.07114,280.56323])
 
-Dates=numpy.array(['2022-01-15 08:10','2022-01-15 08:20','2022-01-15 08:30','2022-01-15 08:40','2022-01-15 08:50','2022-01-15 09:00'])
+# Dates=numpy.array(['2022-01-15 08:10','2022-01-15 08:20','2022-01-15 08:30','2022-01-15 08:40','2022-01-15 08:50','2022-01-15 09:00'])
 
-Beta=25
+# Beta=25
 
-EWLimit=-1
+# EWLimit=-1
 
-countPV=4038.5
+# countPV=4038.5
 
-lossFactor=0.913
+# lossFactor=0.913
 
-eref=15.98
+# eref=15.98
 
-alpha=0.0042
+# alpha=0.0042
 
-PVArea=1.626
+# PVArea=1.626
 
-DNI,power=calcPower(Dates,GHI,t,38.68267,27.57684,Beta,EWLimit,countPV,lossFactor,eref,alpha,PVArea)
+# DNI,power=calcPower(Dates,GHI,t,38.68267,27.57684,Beta,EWLimit,countPV,lossFactor,eref,alpha,PVArea)
 
-print(DNI)
+# print(DNI)
 
-print(power)
+# print(power)
