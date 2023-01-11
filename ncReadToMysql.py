@@ -8,7 +8,7 @@ import calcSolarPower
 import math
 import json
 import sys
-
+from pymongo import MongoClient,UpdateMany
 
 def addColumnToTable(tableName,columnDescTxt):
 
@@ -38,6 +38,7 @@ def addColumnToTable(tableName,columnDescTxt):
 
 def getColumnCountByTable(tableName,columnName):
 
+    
     selectTXT="SELECT count(*) FROM information_schema.COLUMNS  WHERE  TABLE_NAME = '"+tableName+"' AND COLUMN_NAME = '"+columnName+"'"
     
     try:
@@ -93,10 +94,15 @@ def getTableCount(tableName):
 
 
 def wind_convert(u,v):
-    conv = 45 / math.atan(1)
-    wind_dir = (270 - math.atan2(v,u) * conv) % 360
-    wind_speed = math.sqrt(math.pow(u,2) + math.pow(v,2))
+    wind_dir=np.zeros(len(u))
+    wind_speed=np.zeros(len(u))
+    for i in range(0,len(u)):
+
+        conv = 45 / math.atan(1)
+        wind_dir[i] = (270 - math.atan2(v[i],u[i]) * conv) % 360
+        wind_speed[i] = math.sqrt(math.pow(u[i],2) + math.pow(v[i],2))
     #wind_dir = 180 + (180 / math.pi) * math.atan2(v,u)
+    
     return wind_speed,wind_dir
 
 def meanWindDirection(windDirections):
@@ -122,17 +128,18 @@ def meanWindDirection(windDirections):
 def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
 
     baslangicZmn=datetime.now()
+    print("dataOkuyor")
 
     f=nc.Dataset(filePath)
-
-    fu10 = f.variables['U10']
-    fu10 = f.variables['U10']
-    fu50 = f.variables['U50']
-    fu100 = f.variables['U100']
-    fu200 = f.variables['U200']
-    fv10 = f.variables['V10']
-    fv50   = f.variables['V50']
-    fv100  = f.variables['V100']
+    fur10=f.variables['U10'][0][:][:]
+    fu10 = f.variables['U10'][:].data   
+    fu10 = f.variables['U10'][:].data 
+    fu50 = f.variables['U50'][:].data 
+    fu100 = f.variables['U100'][:].data 
+    fu200 = f.variables['U200'][:].data 
+    fv10 = f.variables['V10'][:].data 
+    fv50   = f.variables['V50'][:].data 
+    fv100  = f.variables['V100'][:].data 
     fv200  = f.variables['V200']
     ft2    = f.variables['T2']
     frh2   = f.variables['RH2']
@@ -143,31 +150,217 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
     faccprec=f.variables['AccPrec']
     fsnow  = f.variables['SNOW']
     flat  = f.variables['XLAT']
+    
+ 
+
+
+
 
     with open("config.json","r") as file:
         dbApiInfo=json.load(file)
 
     myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
     
+
+    #server
+    myclient = MongoClient() 
+     
+    # connecting with the portnumber and host 
+    myclient = MongoClient("mongodb://localhost:27017/")
+    mydbMongoDB = myclient["dbVentus"] #db
+
+    
+
+
     #ilk Veri Zamanı
     startTime=pd.to_datetime(timeTotxt(ftime[0]))+timedelta(hours=3)
 
+    # for i in range(280,480):
+    #     addColumnToTable("tmpNCFile","xGridNo"+str(i)+" double DEFAULT NULL")
+    
+    libModelGrid={"gridNo":0,"dataTime":pd.to_datetime("1900-01-01 00:00"),"Values":{"TS":""}}
+
+    libModelGridDF=pd.DataFrame(libModelGrid)
+
+    
+    columnNameValueList=""
+
+    sTxt=""
+
+    insertTXT="Delete From tmpNCFileWS"
+
+    cursor=myDBConnect.cursor()
+
+    cursor.execute(insertTXT)
+
+    myDBConnect.commit()
+    xList=""
+    yList=""
+    for xSay in range(0,siteGridListDF.shape[0]):
+
+        if xList.__contains__(str(siteGridListDF.iloc[siteGridNo]["xGrid"])):
+            if xList=="":
+                xList=str(siteGridListDF.iloc[siteGridNo]["xGrid"])
+            else:
+                xList+="|"+str(siteGridListDF.iloc[siteGridNo]["xGrid"])
+
+
+        if yList.__contains__(str(siteGridListDF.iloc[siteGridNo]["yGrid"])):
+            if xList=="":
+                yList=str(siteGridListDF.iloc[siteGridNo]["yGrid"])
+            else:
+                yList+="|"+str(siteGridListDF.iloc[siteGridNo]["yGrid"])
+
+
+    for i in range(0,483):
+        if sTxt=="":
+            sTxt="%s"
+        else:
+            sTxt+=",%s"
+
+    for timeNo in range(0,ftime.shape[0]-1):
+
+            dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
+         
+
+
+            dataValueList=[]
+
+            siteGridValueDict={}  
+            kolonSayi=0
+            
+            if dataTime>(startTime+timedelta(hours=9)) :
+                xGridArr=xList.split("|")
+                yGridArr=xList.split("|")
+
+                for xGridNo in range(0,len(xGridArr)):
+                    
+                    u10=np.array([])
+                    u50=np.array([])
+                    u100=np.array([])
+                    v10=np.array([])
+                    v50=np.array([])
+                    v100=np.array([]) 
+
+                    for yGridNo in range(0,len(yGridArr)):
+                        
+
+                         if columnNameValueList.__contains__(str(yGridNo)+"/"+str(dataTime))==False:
+                                kolonSayi+=1
+                                
+                                columnNameValueList+=str(yGridArr[yGridNo])
+
+                                uValue=np.array(np.ma.getdata(fu10[timeNo][yGridNo][:]))
+                                vValue=np.array(np.ma.getdata(fv10[timeNo][yGridNo][:]))
+
+                                ws,wd=wind_convert(uValue,vValue)
+
+                                ws=np.append("ws10",ws)
+
+                                ws=np.append(int(yGridNo),ws)
+
+                                ws=np.append(dataTime,ws)
+
+                                tubWS=tuple(ws)
+
+                                dataValueList.append(tubWS)
+
+                                uValue=np.array(np.ma.getdata(fu50[timeNo][yGridNo][:]))
+                                vValue=np.array(np.ma.getdata(fv50[timeNo][yGridNo][:]))
+
+                                ws,wd=wind_convert(uValue,vValue)
+
+                                ws=np.append("ws50",ws)
+                            
+                                ws=np.append(int(yGridNo),ws)
+
+                                ws=np.append(dataTime,ws)
+
+                                tubWS=tuple(ws)
+
+                                dataValueList.append(tubWS)
+
+
+                                uValue=np.array(np.ma.getdata(fu100[timeNo][yGridNo][:]))
+                                vValue=np.array(np.ma.getdata(fv100[timeNo][yGridNo][:]))
+
+                                ws,wd=wind_convert(uValue,vValue)
+
+                                ws=np.append("ws50",ws)
+                            
+                                ws=np.append(int(yGridNo),ws)
+
+                            ws=np.append(dataTime,ws)
+
+                            tubWS=tuple(ws)
+
+                            dataValueList.append(tubWS)
+
+                            # ws,wd=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
+                                
+                            # columnName="WS10_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
+                               
+                            # columnName="WD10_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
+
+                            # ws,wd=wind_convert(fu50[timeNo,yGridNo,xGridNo],fv50[timeNo,yGridNo,xGridNo])
+                                
+                            # columnName="WS50_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
+                               
+                            # columnName="WD50_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
+
+                            # ws,wd=wind_convert(fu100[timeNo,yGridNo,xGridNo],fv100[timeNo,yGridNo,xGridNo])
+                                
+                            # columnName="WS100_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
+                               
+                            # columnName="WD100_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
+
+                            # columnName="T2_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            # dataValueList.append((modelGridNo,dataTime,columnName,float(ft2[timeNo,yGridNo,xGridNo])))
+
+                            # columnName="PSFC_"+str(modelGridNo)+"_"+str(modelNo)
+
+                            #dataValueList.append((modelGridNo,dataTime,columnName,float(fpsfc[timeNo,yGridNo,xGridNo])))
+                    else:
+                            oldu=""
+
+                            oldyy=""
+                
+                print(datetime.now())
+                # insertTXT="Insert Into tmpNCFileWS VALUES("+sTxt+")"
+
+                # cursor=myDBConnect.cursor()
+
+                # cursor.executemany(insertTXT,dataValueList)
+
+                # myDBConnect.commit()
+
 
     for site in siteList:
+        
 
         siteGridListRowDF=siteGridListDF[siteGridListDF["siteId"]==site[0]]
 
         siteGridListRowDF=siteGridListRowDF[siteGridListRowDF["meteoModelListId"]==int(modelNo)]
                                    
         tableName="trainTable_"+str(site[0])
-
         
+        mydbMongoCol = mydbMongoDB[tableName]
+
 
         tblCount=getTableCount(tableName)
-
-        if tblCount==0:
-
-            addSiteTrainDataTable("trainTable_"+str(site[0]))
 
         siteValueDictArr=[]
         vWS10={}
@@ -202,59 +395,102 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
         
         columnNameValueList=""
 
+
+
+
+
+
+
+
+
+
+
+
         for timeNo in range(0,ftime.shape[0]-1):
 
             dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
+            dataTimeHour=pd.to_datetime(datetime.strftime(dataTime,"%y-%m-%d")+" "+str(dataTime.hour)+":00")+timedelta(hours=1)
+
+
             siteGridValueDict={}  
             
             if dataTime>(startTime+timedelta(hours=9)) :
-                
-                
-                
+              
+
                 for siteGridNo in range(0,siteGridListRowDF.shape[0]):
-                    modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
-                    xGridNo=siteGridListRowDF.iloc[siteGridNo]["xGrid"]
-
-                    yGridNo=siteGridListRowDF.iloc[siteGridNo]["yGrid"]
-
                     
+                    modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
 
-                    if dataTime.minute==0:
+                    tmpGridRow=libModelGridDF.loc[(libModelGridDF["gridNo"]== modelGridNo) &(libModelGridDF["dataTime"]==dataTimeHour)]
+                    isFindGrid=False
+
+                    if tmpGridRow.shape[0]>0 :
+
+
+                        isFindGrid=True
                         
-                        countTimeStamp(tableName,dataTime)
+                        tmpGridDict=dict(tmpGridRow.iloc[0]["Values"])
+                        if columnNameValueList.__contains__(modelGridNo+"/"+str(dataTimeHour))==False:
+                            if site[2]==1:
+                                columnNameValueList+="|"+modelGridNo+"/"+str(dataTimeHour)
+
+                                columnName="WS10_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="WD10_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="WS50_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="WD50_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="WS100_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="WD100_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="AVGT2_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="MAXT2_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+                                columnName="AVGPSFC_"+str(modelGridNo)+"_"+str(modelNo)
+                                siteGridValueDict[columnName]=tmpGridDict[columnName]
+
+
+                    xGridNo=siteGridListRowDF.iloc[siteGridNo]["xGrid"]
+                    yGridNo=siteGridListRowDF.iloc[siteGridNo]["yGrid"]
+                    
+                    if dataTime.minute==0 and isFindGrid==False:
+                                                                   
 
                         if site[2]==1:
+
+                            tmpGridDict={}
+
                             wS,wD=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
 
                             #10 m Rüzgar Hız 
                         
-
                             vWS10[modelGridNo].append(wS)
                                               
                             columnName="WS10_"+str(modelGridNo)+"_"+str(modelNo)
 
-                            if columnName in columnNameValueList==False:
-                                addColumnToTable(tableName,columnName+" double DEFAULT NULL")
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
-
                             siteGridValueDict[columnName]=np.round(float(np.mean(vWS10[modelGridNo])),2)
-
+                            tmpGridDict[columnName]=np.round(float(np.mean(vWS10[modelGridNo])),2)
 
                             #10 m Rüzgar Yönü
                             vWD10[modelGridNo].append(wD)
                         
                             columnName="WD10_"+str(modelGridNo)+"_"+str(modelNo)
 
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
-
                             siteGridValueDict[columnName]=np.round(float(meanWindDirection(vWD10[modelGridNo])),2)
+
+                            tmpGridDict[columnName]=np.round(float(meanWindDirection(vWD10[modelGridNo])),2)
 
                             wS,wD=wind_convert(fu50[timeNo,yGridNo,xGridNo],fv50[timeNo,yGridNo,xGridNo])
 
@@ -262,28 +498,18 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                             vWS50[modelGridNo].append(wS)
                         
                             columnName="WS50_"+str(modelGridNo)+"_"+str(modelNo)
-                            
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(np.mean(vWS50[modelGridNo])),2)
+                            tmpGridDict[columnName]=np.round(float(np.mean(vWS50[modelGridNo])),2)
 
                             #50 m Rüzgar Yönü
                             vWD50[modelGridNo].append(wD)
                         
                             columnName="WD50_"+str(modelGridNo)+"_"+str(modelNo)
                             
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(meanWindDirection(vWD50[modelGridNo])),2)
-
+                            tmpGridDict[columnName]=np.round(float(meanWindDirection(vWD50[modelGridNo])),2)
 
                             wS,wD=wind_convert(fu100[timeNo,yGridNo,xGridNo],fv100[timeNo,yGridNo,xGridNo])
 
@@ -292,82 +518,50 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                         
                             columnName="WS100_"+str(modelGridNo)+"_"+str(modelNo)
 
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
-
                             siteGridValueDict[columnName]=np.round(float(np.mean(vWS100[modelGridNo])),2)
+                            tmpGridDict[columnName]=np.round(float(np.mean(vWS100[modelGridNo])),2)
 
                             #50 m Rüzgar Yönü
                             vWD100[modelGridNo].append(wD)
                         
                             columnName="WD100_"+str(modelGridNo)+"_"+str(modelNo)
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(meanWindDirection(vWD100[modelGridNo])),2)
+                            tmpGridDict[columnName]=np.round(float(meanWindDirection(vWD100[modelGridNo])),2)
 
                             #sıcaklık
                             vT2[modelGridNo].append(ft2[timeNo,yGridNo,xGridNo])
 
                             columnName="AVGT2_"+str(modelGridNo)+"_"+str(modelNo)
-                            if columnName in columnNameValueList==False:
-
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(np.mean(vT2[modelGridNo])),2)
-
+                            tmpGridDict[columnName]=np.round(float(np.mean(vT2[modelGridNo])),2)
 
                             columnName="MAXT2_"+str(modelGridNo)+"_"+str(modelNo)
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(np.max(vT2[modelGridNo])),2)
+                            tmpGridDict[columnName]=np.round(float(np.max(vT2[modelGridNo])),2)
 
                             #basınç
                             vPSFC[modelGridNo].append(ft2[timeNo,yGridNo,xGridNo])
 
                             columnName="AVGPSFC_"+str(modelGridNo)+"_"+str(modelNo)
-                            if columnName in columnNameValueList==False:
-                                if columnNameValueList=="":
-                                    columnNameValueList=columnName+"=%("+columnName+")s"
-                                else:
-                                    columnNameValueList+=","+columnName+"=%("+columnName+")s"
 
                             siteGridValueDict[columnName]=np.round(float(np.mean(vPSFC[modelGridNo])),2)
-                        
 
-                             #Sonraki Saat için sıfırla
-                            for siteGridNo in range(0,siteGridListRowDF.shape[0]):
-                                modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
-                                vWS10[modelGridNo]=[]
-                                vWS50[modelGridNo]=[]
-                                vWS100[modelGridNo]=[]
-                                vWD10[modelGridNo]=[]
-                                vWD50[modelGridNo]=[]
-                                vWD100[modelGridNo]=[]
-                                vT2[modelGridNo]=[]
-                                vRH[modelGridNo]=[]
-                                vPrec[modelGridNo]=[]
-                                vSnow[modelGridNo]=[]
-                                vPSFC[modelGridNo]=[]
-                                vGHI[modelGridNo]=[]
-                                vDIFF[modelGridNo]=[]
+                            tmpGridDict[columnName]=np.round(float(np.mean(vPSFC[modelGridNo])),2)
+                           
+                            libModelGridDF.loc[len(libModelGridDF.index)]=[modelGridNo,dataTime,tmpGridDict]
+
+                            # libModelGridDF=libModelGridDF.append({"gridNo":modelGridNo,"dataTime":dataTime,"Values":tmpGridDict},ignore_index=True)
+
+                            
+
+
                         #dakika sıfır rüzgar Sonu:
                     else:
 
-                        if site[2]==1:
+                        if site[2]==1 and isFindGrid==False:
                         
                             #10 m rüzgar
                             wS,wD=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
@@ -389,7 +583,6 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
 
                             #Basınç
                             vPSFC[modelGridNo].append(fpsfc[timeNo,yGridNo,xGridNo])
-
                         #dakika sıfır olmayan rüzgar Sonu:
                     
 
@@ -397,21 +590,52 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                 if dataTime>(startTime+timedelta(hours=9)) :
 
                     if dataTime.minute==0:
+                        #Sonraki Saat için sıfırla
+                        for siteGridNo in range(0,siteGridListRowDF.shape[0]):
+                            modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
+                            vWS10[modelGridNo]=[]
+                            vWS50[modelGridNo]=[]
+                            vWS100[modelGridNo]=[]
+                            vWD10[modelGridNo]=[]
+                            vWD50[modelGridNo]=[]
+                            vWD100[modelGridNo]=[]
+                            vT2[modelGridNo]=[]
+                            vRH[modelGridNo]=[]
+                            vPrec[modelGridNo]=[]
+                            vSnow[modelGridNo]=[]
+                            vPSFC[modelGridNo]=[]
+                            vGHI[modelGridNo]=[]
+                            vDIFF[modelGridNo]=[]
                         
                         siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
 
-                        siteValueDictArr.append(siteGridValueDict)
+                        myquery = {"timeStamp": dataTime}
+
+                        newvalues = { "$set": siteGridValueDict }
+
+                        siteValueDictArr.append(UpdateMany(myquery,newvalues,upsert=True))
+                        
+
+                       
+                        
 
 
         #Time Sonu
-        updateTXT="Update "+tableName+" Set "+columnNameValueList+" where timestamp=%(dataTime)s"
 
-        cursor=myDBConnect.cursor()
+        # mydbMongoCol.bulk_write(siteValueDictArr)
 
-        cursor.executemany(updateTXT,siteValueDictArr)
 
-        myDBConnect.commit()
-        #Update YAzılacak
+        # updateTXT="Update "+tableName+" Set "+columnNameValueList+" where timestamp=%(dataTime)s"
+
+        # cursor=myDBConnect.cursor()
+
+        # cursor.executemany(updateTXT,siteValueDictArr)
+
+        # myDBConnect.commit()
+
+        print(site[1]+"/"+str(datetime.now()))
+
+        
     #Site Listesi Sonu
 
 
@@ -646,9 +870,9 @@ def runNCWriter(modelNo,filePath):
 
 # runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
 
-# runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
+runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
 
-runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
+# runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
 
 
 

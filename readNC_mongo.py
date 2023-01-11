@@ -68,9 +68,10 @@ ncfiles = sorted([f for f in listdir(mypath) if isfile(join(mypath, f)) and f[19
 
 #ICON için kalıp gridleri getir
 # sql = "select DISTINCT xGrid, yGrid, modelGridListId,siteId from musteriDB.siteMetModelGridList  where meteoModelListId=2"
-sql ="select  m.xGrid, m.yGrid, m.modelGridListId,m.siteId,s.airDensity from musteriDB.siteMetModelGridList m,musteriDB.siteList s  where m.meteoModelListId=2 and m.siteId= s.Id"
+sql ="select  m.xGrid, m.yGrid, m.modelGridListId,m.siteId,s.airDensity from siteGridList m,siteList s  where m.meteoModelListId=2 and m.siteId= s.id"
 mycursor.execute(sql)
 site = mycursor.fetchall()
+
 xGridList = []
 yGridList = []
 gridList = []
@@ -137,7 +138,7 @@ for n in range(len(ncfiles)):
     
     for i in range(len(gridList)):
         mycol = mydb2["site_" + str(siteList[i])] #collection
-        print(mycol)
+       
         u10=0
         u50=0 
         u100=0
@@ -203,9 +204,13 @@ for n in range(len(ncfiles)):
                     saat=saat+1         
                     ncreaderRunListId=1
                     modelId=2
-                    f_ws10= calcWindPower.windPower(siteList[i],airDensity[i],ws10,modelId)
-                    f_ws50= calcWindPower.windPower(siteList[i],airDensity[i],ws10,modelId)
-                    f_ws100= calcWindPower.windPower(siteList[i],airDensity[i],ws10,modelId)
+                    
+                    # f_ws10= calcWindPower.windPower(siteList[i],airDensity[i],ws10)
+                    # f_ws50= calcWindPower.windPower(siteList[i],airDensity[i],ws50)
+                    # f_ws100= calcWindPower.windPower(siteList[i],airDensity[i],ws100)
+                    f_ws10=1
+                    f_ws50=5
+                    f_ws100=10
                     lat =flat[t,yGridList[i],xGridList[i]]
                     lon =flon[t,yGridList[i],xGridList[i]]
                     #val = (zaman[t],initTime,xGridList[i], yGridList[i],ncreaderRunListId, float(u10),float(u50),float(u100),float(u200),float(v10),float(v50),float(v100),float(v200),float(tt2),float(rh2),float(psfc),float(diff),float(accprec),float(snow), ws10,wd10, ws50,wd50, ws100,wd100, ws200,wd200)
@@ -238,11 +243,10 @@ for n in range(len(ncfiles)):
                     accprec=0 
                     snow=0 
                     say=0 
-        try:
-            mycol.bulk_write(requests) 
-            print(requests)
-        except BulkWriteError as bwe:
-            print(bwe.details)            
+    try:
+        mycol.bulk_write(requests) 
+    except BulkWriteError as bwe:
+        print(bwe.details)            
                    
     print(ncFile + " dosyası eklendi -- " + str(datetime.now()))
 print("NC okundu Bitiş tarihi:", datetime.now())
