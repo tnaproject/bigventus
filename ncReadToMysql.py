@@ -8,11 +8,16 @@ import calcSolarPower
 import math
 import json
 import sys
-import xarray as xr
 from pymongo import MongoClient,UpdateMany
 import threading
+import time
+import multiprocessing
 
-from multiPro import readandwriteToMysqlNC
+
+
+yazmaBekle=False
+
+
 
 def addColumnToTable(tableName,columnDescTxt):
 
@@ -125,24 +130,429 @@ def meanWindDirection(windDirections):
 
     return mean_WD
 
-calisanProcess=0
 
 
 
+
+    
+
+            
+
+
+def readandwriteSiteToMysqlNC(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyGridList,siteGridList,siteId,modelNo):
+    
+    # with open("config.json","r") as file:
+    #     dbApiInfo=json.load(file)
+
+    # myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
+
+   
+    startTime=pd.to_datetime(timeTotxt(fTimeArr[0]))+timedelta(hours=3)
+
+    # for i in range(0,480):
+    #     addColumnToTable("tmpNCFile","xGridNo"+str(i)+" double DEFAULT NULL")
+       
+
+    myclient = MongoClient() 
+     
+
+    
+
+    # myDBConnect.commit()
+    xList=""
+    yList=""
+
+    dosyaAdi=str(startTime.year)+str(startTime.month)+str(startTime.day)+str(startTime.hour)+str(startTime.minute)
+
+
+    # f=open("d"+dosyaAdi+".txt", "a") 
+
+
+    siteDictList=[]
+
+    siteKontrolText=""
+   
+    siteMainGridList=siteGridList[siteGridList["siteId"]==siteId]
+
+    siteGridValueDict={}
+    for timeNo in range(0,fTimeArr.shape[0]):
+
+        
+        if pd.to_datetime(timeTotxt(fTimeArr[timeNo])).minute==0:
+
+            dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
+        
+        
+        ws10=[]
+        ws50=[]
+        ws100=[]
+        wd10=[]
+        wd50=[]
+        wd100=[]
+        t2=[]
+        psfc=[]
+
+        for xyGridNo in range(0,siteMainGridList.shape[0]):
+
+
+            yGrid=int(siteMainGridList.iloc[xyGridNo]["yGrid"])
+
+            xGrid=int(siteMainGridList.iloc[xyGridNo]["yGrid"])
+
+            modelGridNo=siteMainGridList.iloc[xyGridNo]["modelGridListId"]
+
+            if pd.to_datetime(timeTotxt(fTimeArr[timeNo])).minute!=0:
+
+                u=[]     
+                v=[]
+                
+                     
+                u.append(fu10[timeNo,yGrid,xGrid])
+                                
+                v.append(fv10[timeNo,yGrid,xGrid])
+                              
+                u.append(fu50[timeNo,yGrid,xGrid])
+                                
+                v.append(fv50[timeNo,yGrid,xGrid])
+
+                u.append(fu100[timeNo,yGrid,xGrid])
+                                
+                v.append(fv100[timeNo,yGrid,xGrid])
+
+                ws,wd=wind_convert(u,v)
+
+                ws10.append(ws[0])
+                ws50.append(ws[1])
+                ws100.append(ws[2])
+
+
+                wd10.append(wd[0])
+            
+                wd50.append(wd[1])
+                wd100.append(wd[2])
+
+                t2.append(float(ft2[timeNo,yGrid,xGrid]))
+                                
+                psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+
+            else:
+                
+                u=[]     
+                v=[]
+                
+                
+                     
+                u.append(fu10[timeNo,yGrid,xGrid])
+                                
+                v.append(fv10[timeNo,yGrid,xGrid])
+                              
+                u.append(fu50[timeNo,yGrid,xGrid])
+                                
+                v.append(fv50[timeNo,yGrid,xGrid])
+
+                u.append(fu100[timeNo,yGrid,xGrid])
+                                
+                v.append(fv100[timeNo,yGrid,xGrid])
+
+                ws,wd=wind_convert(u,v)
+
+                ws10.append(ws[0])
+                ws50.append(ws[1])
+                ws100.append(ws[2])
+
+
+                wd10.append(wd[0])
+            
+                wd50.append(wd[1])
+                wd100.append(wd[2])
+
+                t2.append(float(ft2[timeNo,yGrid,xGrid]))
+                                
+                psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+
+                dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
+                
+                wsAvg10=np.mean(ws10)                    
+                wsAvg50=np.mean(ws50)
+                wsAvg100=np.mean(ws100)
+
+                wdAvg10=meanWindDirection(wd10)
+                wdAvg50=meanWindDirection(wd50)
+                wdAvg100=meanWindDirection(wd100)
+
+                tAvg=np.mean(t2)
+                tMax=np.max(t2)
+                psfcAvg=np.mean(psfc)
+        
+                siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg10,2)
+                siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg50,2)
+                siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg100,2)
+
+                siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg10,2)
+                siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg50,2)
+                siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg100,2)
+        
+                siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tAvg,2)
+                siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tMax,2)
+                siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(psfcAvg,2)
+                siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
+
+                ws10=[]
+                ws50=[]
+                ws100=[]
+                wd10=[]
+                wd50=[]
+                wd100=[]
+                t2=[]
+                psfc=[]
+        
+
+       
+                
+           
+
+                newvalues = { "$set": siteGridValueDict }
+
+                myquery = {"dataTime": dataTime}
+
+                siteDictList.append(UpdateMany(myquery,newvalues,upsert=True))
+            
+            
+
+            # f.write(str(siteGridValueDict)+"\n")
+    
+   
+    global yazmaBekle
+
+    while yazmaBekle==True:
+
+        bh=1
+    
+    yazmaBekle=True
+    try:
+        myclient = MongoClient("mongodb://89.252.157.127:27017/")
+    
+        mydbMongoDB = myclient["dbVentusDB_Local"] #db
+   
+        tableName="trainTable_"+str(siteId)
+
+        mongoCol= mydbMongoDB[tableName]
+
+        mongoCol.create_index("dataTime", unique = True)
+
+        mongoCol.bulk_write(siteDictList)
+        f=open("Site_"+str(siteId)+"_"+str(dataTime.to_julian_date())+".txt","a")
+        f.write(str(dataTime))
+        f.close()
+
+        myclient.close()
+    except:
+        ps=""
+
+    yazmaBekle=False
+    
+
+
+
+
+    
+
+def readandwriteToMysqlNC(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyGridList,siteGridList,modelNo):
+    
+    # with open("config.json","r") as file:
+    #     dbApiInfo=json.load(file)
+
+    # myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
+
+   
+    startTime=pd.to_datetime(timeTotxt(fTimeArr[0]))+timedelta(hours=3)
+
+    # for i in range(0,480):
+    #     addColumnToTable("tmpNCFile","xGridNo"+str(i)+" double DEFAULT NULL")
+       
+
+    myclient = MongoClient() 
+     
+
+    
+
+    # myDBConnect.commit()
+    xList=""
+    yList=""
+
+    dosyaAdi=str(startTime.year)+str(startTime.month)+str(startTime.day)+str(startTime.hour)+str(startTime.minute)
+
+
+    # f=open("d"+dosyaAdi+".txt", "a") 
+
+
+    siteDictList={}
+
+    siteKontrolText=""
+   
+
+    for xyGridNo in range(0,len(xyGridList)):
+
+        yGrid=int(xyGridList[xyGridNo][0])
+        xGrid=int(xyGridList[xyGridNo][1])
+        ws10=[]
+        ws50=[]
+        ws100=[]
+        wd10=[]
+        wd50=[]
+        wd100=[]
+        t2=[]
+        psfc=[]
+
+        tmpSiteGridList=siteGridList[(siteGridList["xGrid"]==xGrid) & (siteGridList["yGrid"]==yGrid)]
+        
+        modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
+       
+
+        siteGridValueDict={}
+        
+        
+        
+
+        for timeNo in range(0,fTimeArr.shape[0]):
+            if pd.to_datetime(timeTotxt(fTimeArr[timeNo])).minute==0:
+                dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
+         
+            dataValueList=[]
+
+            kolonSayi=0
+   
+            u=[]     
+            v=[]
+            kolonSayi+=1
+                     
+            u.append(fu10[timeNo,yGrid,xGrid])
+                                
+            v.append(fv10[timeNo,yGrid,xGrid])
+                              
+            u.append(fu50[timeNo,yGrid,xGrid])
+                                
+            v.append(fv50[timeNo,yGrid,xGrid])
+
+            u.append(fu100[timeNo,yGrid,xGrid])
+                                
+            v.append(fv100[timeNo,yGrid,xGrid])
+
+            ws,wd=wind_convert(u,v)
+
+            ws10.append(ws[0])
+            ws50.append(ws[1])
+            ws100.append(ws[2])
+
+
+            wd10.append(wd[0])
+            
+            wd50.append(wd[1])
+            wd100.append(wd[2])
+
+            t2.append(float(ft2[timeNo,yGrid,xGrid]))
+                                
+            psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+            
+        wsAvg10=np.mean(ws10)                    
+        wsAvg50=np.mean(ws50)
+        wsAvg100=np.mean(ws100)
+
+        wdAvg10=meanWindDirection(wd10)
+        wdAvg50=meanWindDirection(wd50)
+        wdAvg100=meanWindDirection(wd100)
+
+        tAvg=np.mean(t2)
+        tMax=np.max(t2)
+        psfcAvg=np.mean(psfc)
+        
+        siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg10,2)
+        siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg50,2)
+        siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg100,2)
+
+        siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg10,2)
+        siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg50,2)
+        siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg100,2)
+        
+        siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tAvg,2)
+        siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tMax,2)
+        siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(psfcAvg,2)
+        siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
+
+        
+        
+
+        for i in range(0,tmpSiteGridList.shape[0]):
+
+            tableName="trainTable_"+str(tmpSiteGridList.iloc[i]["siteId"])
+
+            if siteKontrolText.__contains__(tableName+"|")==False:
+                if siteKontrolText=="":
+
+                    siteKontrolText=tableName+"|"
+
+                else:
+
+                    siteKontrolText+=tableName+"|"
+
+                siteDictList[tableName]=[]
+
+           
+
+            newvalues = { "$set": siteGridValueDict }
+
+            myquery = {"dataTime": dataTime}
+
+            siteDictList[tableName].append(UpdateMany(myquery,newvalues,upsert=True))
+            
+            
+
+            # f.write(str(siteGridValueDict)+"\n")
+    
+   
+    siteList=siteKontrolText.split("|")
+    
+    myclient = MongoClient("mongodb://localhost:27017/")
+    
+    mydbMongoDB = myclient["dbVentusDB"] #db
+   
+
+    for site in siteList:
+
+        if site!="":
+
+            mongoCol= mydbMongoDB[site]
+
+            mongoCol.create_index("dataTime", unique = True)
+
+            mongoCol.bulk_write(siteDictList[site])
+
+    myclient.close()
+            
+
+    # connecting with the portnumber and host 
+    # myclient = MongoClient("mongodb://localhost:27017/")
+
+        
+
+            
+
+        
+    # f.close()
 
 
 
 def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
-    
-
-   
+     
         
 
 
 
     baslangicZmn=datetime.now()
     print("dataOkuyor")
-
+    print(datetime.now())
     f=nc.Dataset(filePath)
 
 
@@ -164,6 +574,8 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
     faccprec=f.variables['AccPrec'][:,:,:].data
     fsnow  = f.variables['SNOW'][:,:,:].data
   
+    print(datetime.now())
+    print("data okundu")
 
     with open("config.json","r") as file:
         dbApiInfo=json.load(file)
@@ -175,8 +587,7 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
     myclient = MongoClient() 
      
     # connecting with the portnumber and host 
-    myclient = MongoClient("mongodb://89.252.157.127:27017/")
-    mydbMongoDB = myclient["dbVentusDB"] #db
+
 
     
 
@@ -209,6 +620,8 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
 
     xyList=[]
     xyKontrol=""
+    siteId=[]
+    siteIdKontrol=""
 
     for rowCount in range(0,siteGridListDF.shape[0]):
         if xyKontrol.__contains__(str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"]))==False:
@@ -219,21 +632,31 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
 
             xyList.append([str(siteGridListDF.iloc[rowCount]["yGrid"]),str(siteGridListDF.iloc[rowCount]["xGrid"])])
 
-
-
+        if siteIdKontrol.__contains__(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")==False:
+            if siteIdKontrol=="":
+                siteIdKontrol=str(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")
+                
+            else:
+                siteIdKontrol=str(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")
+            
+            siteId.append(siteGridListDF.iloc[rowCount]["siteId"])
 
     if ftime.shape[0]!=325:
         return
 
     calistirProcess=0
+
     p=[]
+
     for timeNo in range(1,ftime.shape[0],6):
-        p.append(timeNo)
+        for site in siteId:
+            p.append(timeNo)
 
     pSay=0
     print(datetime.now())
     print("+++++++++++++++")
 
+    
     for timeNo in range(1,ftime.shape[0],6):
 
         dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
@@ -243,22 +666,21 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
         dataValueList=[]
 
         siteGridValueDict={}  
-        kolonSayi=0
+        
 
-        if pSay>8:
-            for timeNo in range(0,pSay):
-                print("processs "+str(timeNo)+" bekliyor")
-                p[timeNo].join()
-                print("processs "+str(timeNo)+" bitti")
+        threadCalisiyor=True
+
 
         if __name__ == '__main__':
             
-            p[pSay]=threading.Thread(target=readandwriteToMysqlNC,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,1,))
+            for site in siteId:
+                p[pSay]=threading.Thread(target=readandwriteSiteToMysqlNC,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,site,1,))
 
-            p[pSay].start()
+                p[pSay].start()
           
-            calistirProcess+=1
-            pSay+=1
+                
+
+                pSay+=1
             
         
         
@@ -286,10 +708,17 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                 # cursor.executemany(insertTXT,dataValueList)
 
 
+
+
     for timeNo in range(0,len(p)):
+        print("processs "+str(timeNo)+" bitti")
         p[timeNo].join()
         print("processs "+str(timeNo)+" bitti")
     
+    
+
+
+  
     print("+++++++++++++++")
     print(datetime.now())
     
@@ -807,9 +1236,9 @@ def runNCWriter(modelNo,filePath):
 
 # runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
 
-# runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
+runNCWriter('1',"C:\\Users\\user\\Downloads\Gfs\\wrfpost_2022-11-30_00.nc")
 
-runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
+# runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
 
 
 
