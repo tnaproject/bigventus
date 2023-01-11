@@ -49,18 +49,24 @@ def executeMany(connect,cursorTmp,queryText,dataList):
     return rowCount,cursorTmp
 
 
-def executeOne(connect,cursorTmp,queryText):
+def executeOne(connect,cursorTmp,queryText,returnList=False):
+
 
     rowCount=-1
-
+    queryList=[]
+    
     for i in range(0,4):
 
         try:
 
             cursorTmp.execute(queryText)
 
-            connect.commit()
+            if returnList==True:
 
+                queryList=cursorTmp.fetchAll()
+
+            connect.commit()
+            
             rowCount=cursorTmp.rowcount
 
         except:
@@ -72,8 +78,15 @@ def executeOne(connect,cursorTmp,queryText):
             else:
                 raise
             break
-    
-    return rowCount
+
+
+    if returnList==True:
+
+        return queryList
+
+    else:
+
+        return rowCount
 
 def getOrganizationInfo(orgId):
 

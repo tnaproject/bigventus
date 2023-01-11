@@ -8,7 +8,11 @@ import calcSolarPower
 import math
 import json
 import sys
+import xarray as xr
 from pymongo import MongoClient,UpdateMany
+import threading
+
+from multiPro import readandwriteToMysqlNC
 
 def addColumnToTable(tableName,columnDescTxt):
 
@@ -121,40 +125,45 @@ def meanWindDirection(windDirections):
 
     return mean_WD
 
+calisanProcess=0
+
+
 
 
 
 
 def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
+    
+
+   
+        
+
+
 
     baslangicZmn=datetime.now()
     print("dataOkuyor")
 
     f=nc.Dataset(filePath)
-    fur10=f.variables['U10'][0][:][:]
-    fu10 = f.variables['U10'][:].data   
-    fu10 = f.variables['U10'][:].data 
-    fu50 = f.variables['U50'][:].data 
-    fu100 = f.variables['U100'][:].data 
-    fu200 = f.variables['U200'][:].data 
-    fv10 = f.variables['V10'][:].data 
-    fv50   = f.variables['V50'][:].data 
-    fv100  = f.variables['V100'][:].data 
-    fv200  = f.variables['V200']
-    ft2    = f.variables['T2']
-    frh2   = f.variables['RH2']
-    fpsfc  = f.variables['PSFC']
-    fghi   = f.variables['GHI']
-    fdiff  = f.variables['DIFF']
-    ftime  =  f.variables['Time']
-    faccprec=f.variables['AccPrec']
-    fsnow  = f.variables['SNOW']
-    flat  = f.variables['XLAT']
-    
- 
 
 
-
+    fu10 = f.variables['U10'][:,:,:].data
+    fu10 = f.variables['U10'][:,:,:].data
+    fu50 = f.variables['U50'][:,:,:].data
+    fu100 = f.variables['U100'][:,:,:].data
+    fu200 = f.variables['U200'][:,:,:].data
+    fv10 = f.variables['V10'][:,:,:].data
+    fv50   = f.variables['V50'][:,:,:].data
+    fv100  = f.variables['V100'][:,:,:].data
+    fv200  = f.variables['V200'][:,:,:].data
+    ft2    = f.variables['T2'][:,:,:].data
+    frh2   = f.variables['RH2'][:,:,:].data
+    fpsfc  = f.variables['PSFC'][:,:,:].data
+    fghi   = f.variables['GHI'][:,:,:].data
+    fdiff  = f.variables['DIFF'][:,:,:].data
+    ftime  =  f.variables['Time'][:,:].data
+    faccprec=f.variables['AccPrec'][:,:,:].data
+    fsnow  = f.variables['SNOW'][:,:,:].data
+  
 
     with open("config.json","r") as file:
         dbApiInfo=json.load(file)
@@ -166,8 +175,8 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
     myclient = MongoClient() 
      
     # connecting with the portnumber and host 
-    myclient = MongoClient("mongodb://localhost:27017/")
-    mydbMongoDB = myclient["dbVentus"] #db
+    myclient = MongoClient("mongodb://89.252.157.127:27017/")
+    mydbMongoDB = myclient["dbVentusDB"] #db
 
     
 
@@ -196,157 +205,95 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
     myDBConnect.commit()
     xList=""
     yList=""
-    for xSay in range(0,siteGridListDF.shape[0]):
 
-        if xList.__contains__(str(siteGridListDF.iloc[siteGridNo]["xGrid"])):
-            if xList=="":
-                xList=str(siteGridListDF.iloc[siteGridNo]["xGrid"])
+
+    xyList=[]
+    xyKontrol=""
+
+    for rowCount in range(0,siteGridListDF.shape[0]):
+        if xyKontrol.__contains__(str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"]))==False:
+            if xyKontrol=="":
+                xyKontrol=str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"])
             else:
-                xList+="|"+str(siteGridListDF.iloc[siteGridNo]["xGrid"])
+                xyKontrol+="|"+str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"])
+
+            xyList.append([str(siteGridListDF.iloc[rowCount]["yGrid"]),str(siteGridListDF.iloc[rowCount]["xGrid"])])
 
 
-        if yList.__contains__(str(siteGridListDF.iloc[siteGridNo]["yGrid"])):
-            if xList=="":
-                yList=str(siteGridListDF.iloc[siteGridNo]["yGrid"])
-            else:
-                yList+="|"+str(siteGridListDF.iloc[siteGridNo]["yGrid"])
 
 
-    for i in range(0,483):
-        if sTxt=="":
-            sTxt="%s"
-        else:
-            sTxt+=",%s"
+    if ftime.shape[0]!=325:
+        return
 
-    for timeNo in range(0,ftime.shape[0]-1):
+    calistirProcess=0
+    p=[]
+    for timeNo in range(1,ftime.shape[0],6):
+        p.append(timeNo)
 
-            dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
+    pSay=0
+    print(datetime.now())
+    print("+++++++++++++++")
+
+    for timeNo in range(1,ftime.shape[0],6):
+
+        dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
          
 
 
-            dataValueList=[]
+        dataValueList=[]
 
-            siteGridValueDict={}  
-            kolonSayi=0
+        siteGridValueDict={}  
+        kolonSayi=0
+
+        if pSay>8:
+            for timeNo in range(0,pSay):
+                print("processs "+str(timeNo)+" bekliyor")
+                p[timeNo].join()
+                print("processs "+str(timeNo)+" bitti")
+
+        if __name__ == '__main__':
             
-            if dataTime>(startTime+timedelta(hours=9)) :
-                xGridArr=xList.split("|")
-                yGridArr=xList.split("|")
+            p[pSay]=threading.Thread(target=readandwriteToMysqlNC,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,1,))
 
-                for xGridNo in range(0,len(xGridArr)):
+            p[pSay].start()
+          
+            calistirProcess+=1
+            pSay+=1
+            
+        
+        
+
+        #readandwriteToMysqlNC(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,1)
+
+
                     
-                    u10=np.array([])
-                    u50=np.array([])
-                    u100=np.array([])
-                    v10=np.array([])
-                    v50=np.array([])
-                    v100=np.array([]) 
 
-                    for yGridNo in range(0,len(yGridArr)):
-                        
-
-                         if columnNameValueList.__contains__(str(yGridNo)+"/"+str(dataTime))==False:
-                                kolonSayi+=1
-                                
-                                columnNameValueList+=str(yGridArr[yGridNo])
-
-                                uValue=np.array(np.ma.getdata(fu10[timeNo][yGridNo][:]))
-                                vValue=np.array(np.ma.getdata(fv10[timeNo][yGridNo][:]))
-
-                                ws,wd=wind_convert(uValue,vValue)
-
-                                ws=np.append("ws10",ws)
-
-                                ws=np.append(int(yGridNo),ws)
-
-                                ws=np.append(dataTime,ws)
-
-                                tubWS=tuple(ws)
-
-                                dataValueList.append(tubWS)
-
-                                uValue=np.array(np.ma.getdata(fu50[timeNo][yGridNo][:]))
-                                vValue=np.array(np.ma.getdata(fv50[timeNo][yGridNo][:]))
-
-                                ws,wd=wind_convert(uValue,vValue)
-
-                                ws=np.append("ws50",ws)
-                            
-                                ws=np.append(int(yGridNo),ws)
-
-                                ws=np.append(dataTime,ws)
-
-                                tubWS=tuple(ws)
-
-                                dataValueList.append(tubWS)
+                              
 
 
-                                uValue=np.array(np.ma.getdata(fu100[timeNo][yGridNo][:]))
-                                vValue=np.array(np.ma.getdata(fv100[timeNo][yGridNo][:]))
-
-                                ws,wd=wind_convert(uValue,vValue)
-
-                                ws=np.append("ws50",ws)
-                            
-                                ws=np.append(int(yGridNo),ws)
-
-                            ws=np.append(dataTime,ws)
-
-                            tubWS=tuple(ws)
-
-                            dataValueList.append(tubWS)
-
-                            # ws,wd=wind_convert(fu10[timeNo,yGridNo,xGridNo],fv10[timeNo,yGridNo,xGridNo])
-                                
-                            # columnName="WS10_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
-                               
-                            # columnName="WD10_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
-
-                            # ws,wd=wind_convert(fu50[timeNo,yGridNo,xGridNo],fv50[timeNo,yGridNo,xGridNo])
-                                
-                            # columnName="WS50_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
-                               
-                            # columnName="WD50_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
-
-                            # ws,wd=wind_convert(fu100[timeNo,yGridNo,xGridNo],fv100[timeNo,yGridNo,xGridNo])
-                                
-                            # columnName="WS100_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,ws))
-                               
-                            # columnName="WD100_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,wd))
-
-                            # columnName="T2_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            # dataValueList.append((modelGridNo,dataTime,columnName,float(ft2[timeNo,yGridNo,xGridNo])))
-
-                            # columnName="PSFC_"+str(modelGridNo)+"_"+str(modelNo)
-
-                            #dataValueList.append((modelGridNo,dataTime,columnName,float(fpsfc[timeNo,yGridNo,xGridNo])))
-                    else:
-                            oldu=""
-
-                            oldyy=""
+   
                 
-                print(datetime.now())
+                    # ws10,wd10=wind_convert(u10[0],u10[1])
+                    # ws50,wd50=wind_convert(u10[0],u10[1])
+                    # ws100,wd100=wind_convert(u10[0],u10[1])  
+
+      
+
                 # insertTXT="Insert Into tmpNCFileWS VALUES("+sTxt+")"
 
                 # cursor=myDBConnect.cursor()
 
                 # cursor.executemany(insertTXT,dataValueList)
 
-                # myDBConnect.commit()
 
+    for timeNo in range(0,len(p)):
+        p[timeNo].join()
+        print("processs "+str(timeNo)+" bitti")
+    
+    print("+++++++++++++++")
+    print(datetime.now())
+    
+    return
 
     for site in siteList:
         
@@ -396,16 +343,6 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
         columnNameValueList=""
 
 
-
-
-
-
-
-
-
-
-
-
         for timeNo in range(0,ftime.shape[0]-1):
 
             dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
@@ -422,6 +359,7 @@ def readwriteNCNew(filePath,siteList,siteGridListDF,modelNo):
                     modelGridNo=str(siteGridListRowDF.iloc[siteGridNo]["modelGridListId"])
 
                     tmpGridRow=libModelGridDF.loc[(libModelGridDF["gridNo"]== modelGridNo) &(libModelGridDF["dataTime"]==dataTimeHour)]
+                    
                     isFindGrid=False
 
                     if tmpGridRow.shape[0]>0 :
@@ -841,8 +779,7 @@ def runNCWriter(modelNo,filePath):
     cursor.execute(selectTxt)
     
     siteTable = cursor.fetchall()
-
-    
+   
 
     selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId="+str(modelNo)
 
@@ -870,9 +807,9 @@ def runNCWriter(modelNo,filePath):
 
 # runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
 
-runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
+# runNCWriter('1',"D:\\bigventusNC\\Gfs\\wrfpost_2022-11-30_00.nc")
 
-# runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
+runNCWriter('1',"I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc")
 
 
 
