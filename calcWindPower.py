@@ -3,6 +3,11 @@ import mysql.connector
 import math
 import numpy
 import json
+import pandas as pd
+
+powerListDF=pd.DataFrame.from_dict([{"windSpeed":-9999,"siteId":-9999,"power":-9999}])
+
+
 
 def calcWindPower(windSpeed,airDensity,powerCurveTable,powerCurveId):
         
@@ -90,7 +95,6 @@ def windPower(site,airDensityColumnNumber,windSpeed):
 
     selectTxt="Select * From sitewtgList where siteId="+str(site[0])
 
-
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
@@ -111,8 +115,7 @@ def windPower(site,airDensityColumnNumber,windSpeed):
     cursor.execute(selectTxt)
     
     wtgLibTable = cursor.fetchall()
-
-    
+  
 
     if len(wtgLibTable)<=0:
 
@@ -140,7 +143,27 @@ def windPower(site,airDensityColumnNumber,windSpeed):
     return cPower
 
 
-def windPowerList(site,airDensityColumnNumber,windSpeedList):
+def windPowerList(siteId,airDensity,windSpeedList):
+
+    global powerListDF
+
+    pwrList=[]
+
+    for windSpeedCount in range(0,len(windSpeedList)):
+
+        tmpPowerListDF=powerListDF[(powerListDF["windSpeed"]==windSpeedList[windSpeedCount])&(powerListDF["siteId"]==siteId)]
+        
+        if tmpPowerListDF.shape[0]>0:
+
+            pwrList.append(tmpPowerListDF.iloc[0]["power"])
+            
+
+    if len(pwrList)==len(windSpeedList):
+
+        return  pwrList
+
+
+    
 
     with open("config.json","r") as file:
 
@@ -149,14 +172,13 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
 
     myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="musteriDB")
 
-    selectTxt="Select * From sitewtgList where siteId="+str(site[0])
+    selectTxt="Select * From sitewtgList where siteId="+str(siteId)
 
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
     
     wtgTable = cursor.fetchall()
-
 
     myDBConnect.close()
 
@@ -170,42 +192,41 @@ def windPowerList(site,airDensityColumnNumber,windSpeedList):
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
-    
-    myDBConnect.commit()
-    
+            
     wtgLibTable = cursor.fetchall()
   
-
     if len(wtgLibTable)<=0:
 
         return -9999
 
-    
     
     selectTxt="Select * From powerCurve where powerCurveId="+str(wtgLibTable[0][3])
 
     cursor=myDBConnect.cursor()
             
     cursor.execute(selectTxt)
-    
-    myDBConnect.commit()
-
+        
     powerCurveTable = cursor.fetchall()
 
 
     cpowerList=[]
     
+
     for wsValue in windSpeedList:
 
         
-        cTmpPower=0
+        cPower=0
 
         for wtg in wtgLibTable:
 
-            cTmpPower+=calcWindPower(wsValue,site[airDensityColumnNumber],powerCurveTable,str(wtg[3]))
-    
+            cTmpPower=calcWindPower(wsValue,airDensity,powerCurveTable,str(wtg[3]))
+
+            cPower+=cTmpPower*wtgTable[0][4]
         
-        cpowerList.append(cTmpPower*wtg[4])
+        cpowerList.append(cPower)
+
+        powerListDF=powerListDF.append([{"windSpeed":wsValue,"siteId":siteId,"power":cPower}])
+
 
     return cpowerList
 
