@@ -129,9 +129,26 @@ def meanWindDirection(windDirections):
 
     return mean_WD
 
- 
+def startwithFuture(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyList,siteGridListDF,modelNo):
 
-def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyGridList,siteGridList,modelNo,startHour):
+    with concurrent.futures.ThreadPoolExecutor(max_workers = 5) as executor:
+                
+        threadAnswer={executor.submit(readNCAndWriteToMongo,fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyList,siteGridListDF,modelNo)}
+
+               
+        for future in concurrent.futures.as_completed(threadAnswer):
+
+            try:
+                cevap=future.result()
+                   
+
+            except Exception as exc:
+
+                               
+
+                print("Hata"+"/"+exc+"/"+str(datetime.now()))   
+
+def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyGridList,siteGridList,modelNo):
     
     siteDictList={}
 
@@ -141,8 +158,8 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
 
     baslamaZamani=datetime.now()
     
-    print("Start Hour:"+str(startHour)+">"+str(startTime)+" Loading")
- 
+    print(str(startTime)+" Loading")
+    sys.stdout.write("\033[K")
 
     for xyGridNo in range(0,len(xyGridList)):
         
@@ -280,7 +297,7 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
    
     siteList=siteKontrolText.split("|")
     
-    myclient = MongoClient("mongodb://localhost:27017/")
+    myclient = MongoClient("mongodb://89.252.157.127:27017/")
     
     mydbMongoDB = myclient["dbVentus"] #db
    
@@ -288,28 +305,17 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
     for site in siteList:
 
         if site!="":
+            
+            mongoCol= mydbMongoDB[site]
 
-            for i in range(0,4):
-                try:
+            mongoCol.bulk_write(siteDictList[site])
 
-                    mongoCol= mydbMongoDB[site]
-
-                    mongoCol.bulk_write(siteDictList[site])
-
-                    mongoCol.create_index("dataTime", unique = True)
-
-                except:
-                    if i<3:
-                        continue
-                    else:
-                        raise
-                    break
+            mongoCol.create_index("dataTime", unique = True)
 
     myclient.close()
 
-    print("Start Hour:"+str(startHour)+"> "+str(startTime)+" Loaded >"+str(((datetime.now()-baslamaZamani).total_seconds()/60)))
-    
-    
+    print(str(startTime)+" Loaded >"+str(((datetime.now()-baslamaZamani).total_seconds()/60)))
+    sys.stdout.write("\033[K")
     return str(dataTime)+" bitti "+str(datetime.now())
 
 
@@ -373,58 +379,70 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
         
         if (hourDiff>=dataStartHourTime and hourDiff<dataEndHourTime):
        
-        
+           # readandwriteToMysqlNC(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo)
+       
                     
-            threadArr.append(threading.Thread(target=readNCAndWriteToMongo,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime)))
+                    threadArr.append(threading.Thread(target=readNCAndWriteToMongo,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo)))
 
             
+                    # with concurrent.futures.ThreadPoolExecutor(max_workers = 10) as executor:
+                
+                    #     threadAnswer={executor.submit(readNCAndWriteToMongo,ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo)}
+
+               
+                    #     for future in concurrent.futures.as_completed(threadAnswer):
+
+                    #         try:
+                    #             cevap=future.result()
+
+                    #             print(cevap)
+
+                                
+
+                    #         except Exception as exc:
+
+                               
+
+                    #             print("Hata"+"/"+exc+"/"+str(datetime.now()))
 
 
 
-
-    maxThread=-9999
+    maxThread=3
 
     for thrd in range(0,len(threadArr)):
 
         threadArr[thrd].start()
         
-        if maxThread==-9999:
 
+
+
+
+        if maxThread==3:
             time.sleep(2)
-
-            if threading.activeCount()<4:
-
-                maxThread=6
-                    
-            else:
-
-                maxThread=4
-
 
         aliveThreadCount=0 
 
         for thrSay in range(0,thrd):
-
             if threadArr[thrSay].is_alive():
-
                 aliveThreadCount+=1
 
 
 
         if aliveThreadCount>maxThread:
             
-            print("Running Thread Count:"+str(aliveThreadCount)+"/ Allowed Thread Count:"+str(maxThread),end="\r")
-
 
             while aliveThreadCount>maxThread:
-                        
+              
+
+                print("Running Thread Count:"+str(aliveThreadCount)+" | "+str(np.round(((datetime.now()-processStartTime).total_seconds()/60),2)),end="\r")
+
                 if threading.activeCount()<10:
 
-                    maxThread=13
+                    maxThread=7
                     
                 else:
 
-                    maxThread=8
+                    maxThread=4
                 
                 aliveThreadCount=0
 
@@ -432,28 +450,22 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
                     if threadArr[thrSay].is_alive():
                         aliveThreadCount+=1
                 
+                time.sleep(0.1)
 
 
-
-
+                # threadArr[thrd-1].join()
 
 
 
     aliveThreadCount=1
 
-    tmpAliveThreadCount=0
-
     while aliveThreadCount>0:
-
-        if aliveThreadCount>0:
-            tmpAliveThreadCount=aliveThreadCount
-
-        print("Waiting Thread Count:"+str(tmpAliveThreadCount))
 
         aliveThreadCount=0
 
         for thrSay in range(0,thrd):
 
+            print("Wait For last Thread:"+str(aliveThreadCount)+" | "+str(np.round(((datetime.now()-processStartTime).total_seconds()/60),2)),end="\r")
             
             if threadArr[thrSay].is_alive():
                 aliveThreadCount+=1

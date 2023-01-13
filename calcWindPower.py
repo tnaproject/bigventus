@@ -4,84 +4,146 @@ import math
 import numpy
 import json
 import pandas as pd
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
+
+print(__name__)
 
 powerListDF=pd.DataFrame.from_dict([{"windSpeed":-9999,"siteId":-9999,"power":-9999}])
+
+print("Yükleniyor....")
+
+with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+
+myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="bigventusDB")
+
+
+#PowerCurveTable
+selectTxt="Select * From powerCurve order by windspeed"
+    
+cursor=myDBConnect.cursor()
+            
+cursor.execute(selectTxt)
+    
+powerCurveAirDensityTable = cursor.fetchall()
+
+powerCurveAirDensityTableDF=pd.DataFrame(powerCurveAirDensityTable)
+
+#wtgLibrary
+selectTxt="Select * From wtgLibrary"
+            
+cursor.execute(selectTxt)
+            
+wtgLibTable = cursor.fetchall()
+
+wtgLibTableDF=pd.DataFrame(wtgLibTable)
+
+#powerCurveTable
+selectTxt="Select * From powerCurve"
+
+cursor=myDBConnect.cursor()
+            
+cursor.execute(selectTxt)
+        
+powerCurveTable = cursor.fetchall()
+
+powerCurveTableDF=pd.DataFrame(powerCurveTable)
+
+myDBConnect.close()
+
+#siteWTGList
+myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="musteriDB")
+
+selectTxt="Select * From sitewtgList"
+
+cursor=myDBConnect.cursor()
+            
+cursor.execute(selectTxt)
+    
+wtgTable = cursor.fetchall()
+
+wtgTableDF=pd.DataFrame(wtgTable)
+
+myDBConnect.close()
+
+
 
 
 
 def calcWindPower(windSpeed,airDensity,powerCurveTable,powerCurveId):
         
-    with open("config.json","r") as file:
-
-        dbApiInfo=json.load(file)
-
-
-    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="bigventusDB")
-
-    tmpAirDensityDiff=-9999
-    selectedAirDensity=-9999
+   
+        tmpAirDensityDiff=-9999
+        selectedAirDensity=-9999
 
 
-    for powerCurveRow in powerCurveTable:
+        for powerCurveRow in range(0,powerCurveTable.shape[0]):
         
 
-        rowAirDensityDiff=abs(powerCurveRow[1]-airDensity)
+            rowAirDensityDiff=abs(powerCurveTable.iloc[powerCurveRow][1]-airDensity)
 
-        if tmpAirDensityDiff==-9999:
+            if tmpAirDensityDiff==-9999:
 
-            tmpAirDensityDiff=rowAirDensityDiff
-            selectedAirDensity=powerCurveRow[1]
-
-        else:
-
-            if rowAirDensityDiff<tmpAirDensityDiff:
                 tmpAirDensityDiff=rowAirDensityDiff
-                selectedAirDensity=powerCurveRow[1]
+                selectedAirDensity=powerCurveTable.iloc[powerCurveRow][1]
+
+            else:
+
+                if rowAirDensityDiff<tmpAirDensityDiff:
+                    tmpAirDensityDiff=rowAirDensityDiff
+                    selectedAirDensity=powerCurveTable.iloc[powerCurveRow][1]
 
 
 
-    selectTxt="Select * From powerCurve where powerCurveId="+str(powerCurveId)+" and airdensity="+str(selectedAirDensity)+" order by windspeed"
-    
-    cursor=myDBConnect.cursor()
-            
-    cursor.execute(selectTxt)
-    
-    powerCurveAirDensityTable = cursor.fetchall()
+        global powerCurveAirDensityTableDF
+
+        powerCurveAirDensityTable = powerCurveAirDensityTableDF[(powerCurveAirDensityTableDF[4]==int(powerCurveId)) & (powerCurveAirDensityTableDF[1]==selectedAirDensity)]
    
+        if powerCurveAirDensityTable.shape[0]>0:
 
-    maxWindSpeed=powerCurveAirDensityTable[len(powerCurveAirDensityTable)-1][2]
+            maxWindSpeed=powerCurveAirDensityTable.iloc[powerCurveAirDensityTable.shape[0]-1][2]
 
-    myDBConnect.close()
 
     # en yüsek rüzgar üzerine üretim 0
-    if windSpeed>maxWindSpeed:
+            if windSpeed>maxWindSpeed:
 
-        return 0
+                return 0
 
-    if windSpeed==maxWindSpeed:
-        return powerCurveAirDensityTable[len(powerCurveAirDensityTable)-1][3]
+            if windSpeed==maxWindSpeed:
+
+                return powerCurveAirDensityTable.iloc[powerCurveAirDensityTable.shape[0]-1][3]
 
 
 
-    for rowCurve in range(0,len(powerCurveAirDensityTable)):
+            for rowCurve in range(0,powerCurveAirDensityTable.shape[0]-1):
         
-        if powerCurveAirDensityTable[rowCurve][2]>windSpeed:
+                if powerCurveAirDensityTable.iloc[rowCurve][2]>windSpeed:
             
-            altRowNumber=rowCurve-1
-            ustRowNumber=rowCurve
+                    altRowNumber=rowCurve-1
+                    ustRowNumber=rowCurve
 
-            windSpeedMainDiff=powerCurveAirDensityTable[ustRowNumber][2]-powerCurveAirDensityTable[altRowNumber][2]
+                    windSpeedMainDiff=powerCurveAirDensityTable.iloc[ustRowNumber][2]-powerCurveAirDensityTable.iloc[altRowNumber][2]
 
-            powerMainDiff=powerCurveAirDensityTable[ustRowNumber][3]-powerCurveAirDensityTable[altRowNumber][3]
+                    powerMainDiff=powerCurveAirDensityTable.iloc[ustRowNumber][3]-powerCurveAirDensityTable.iloc[altRowNumber][3]
 
-            windSpeedDiff=windSpeed-powerCurveAirDensityTable[altRowNumber][2]
+                    windSpeedDiff=windSpeed-powerCurveAirDensityTable.iloc[altRowNumber][2]
 
-            powerDiff=(windSpeedDiff*powerMainDiff)/windSpeedMainDiff
+                    powerDiff=(windSpeedDiff*powerMainDiff)/windSpeedMainDiff
 
-            powerCalc=powerCurveAirDensityTable[altRowNumber][3]+powerDiff
+                    powerCalc=powerCurveAirDensityTable.iloc[altRowNumber][3]+powerDiff
 
-            return powerCalc
+                    return powerCalc
 
+            return powerCurveAirDensityTable.iloc[powerCurveAirDensityTable.shape[0]-1][3]
+
+                
+  
 
 
 def windPower(site,airDensityColumnNumber,windSpeed):
@@ -156,6 +218,8 @@ def windPowerList(siteId,airDensity,windSpeedList):
         if tmpPowerListDF.shape[0]>0:
 
             pwrList.append(tmpPowerListDF.iloc[0]["power"])
+
+            bitti=""
             
 
     if len(pwrList)==len(windSpeedList):
@@ -164,50 +228,33 @@ def windPowerList(siteId,airDensity,windSpeedList):
 
 
     
-
-    with open("config.json","r") as file:
-
-        dbApiInfo=json.load(file)
+    global wtgTableDF
 
 
-    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="musteriDB")
+    wtgTable=wtgTableDF[wtgTableDF[5]==siteId]
 
-    selectTxt="Select * From sitewtgList where siteId="+str(siteId)
 
-    cursor=myDBConnect.cursor()
-            
-    cursor.execute(selectTxt)
-    
-    wtgTable = cursor.fetchall()
 
-    myDBConnect.close()
-
-    if len(wtgTable)<=0:
+    if wtgTable.shape[0]<=0:
         return -9999
 
-    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="bigventusDB")
+    
+    global wtgLibTableDF
 
-    selectTxt="Select * From wtgLibrary where id="+str(wtgTable[0][1])
+    wtgLibTable=wtgLibTableDF[wtgLibTableDF[0]==wtgTable.iloc[0][1]]
 
-    cursor=myDBConnect.cursor()
-            
-    cursor.execute(selectTxt)
-            
-    wtgLibTable = cursor.fetchall()
-  
-    if len(wtgLibTable)<=0:
+    if wtgLibTable.shape[0]<=0:
 
         return -9999
 
     
-    selectTxt="Select * From powerCurve where powerCurveId="+str(wtgLibTable[0][3])
 
-    cursor=myDBConnect.cursor()
-            
-    cursor.execute(selectTxt)
-        
-    powerCurveTable = cursor.fetchall()
+    global powerCurveTableDF
 
+    wtgListPowerCurveID=wtgLibTable.iloc[0][3]
+
+    
+    powerCurveTable=powerCurveTableDF[powerCurveTableDF[4]==wtgListPowerCurveID]
 
     cpowerList=[]
     
@@ -217,15 +264,20 @@ def windPowerList(siteId,airDensity,windSpeedList):
         
         cPower=0
 
-        for wtg in wtgLibTable:
+        for wtg in range(0,wtgLibTable.shape[0]):
+            
 
-            cTmpPower=calcWindPower(wsValue,airDensity,powerCurveTable,str(wtg[3]))
+                
 
-            cPower+=cTmpPower*wtgTable[0][4]
+                cTmpPower=calcWindPower(wsValue,airDensity,powerCurveTable,str(wtgLibTable.iloc[wtg][3]))
+                             
+                cPower+=cTmpPower*wtgTable.iloc[0][4]
         
-        cpowerList.append(cPower)
+                cpowerList.append(cPower)
 
-        powerListDF=powerListDF.append([{"windSpeed":wsValue,"siteId":siteId,"power":cPower}])
+                powerListDF=powerListDF.append([{"windSpeed":wsValue,"siteId":siteId,"power":cPower}])
+
+
 
 
     return cpowerList
