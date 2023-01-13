@@ -198,17 +198,23 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
                                 
             v.append(fv100[timeNo,yGrid,xGrid])
 
-            ws,wd=wind_convert(u,v)
+            # ws,wd=wind_convert(u,v)
 
-            ws10.append(ws[0])
-            ws50.append(ws[1])
-            ws100.append(ws[2])
+            # ws10.append(ws[0])
+            # ws50.append(ws[1])
+            # ws100.append(ws[2])
 
+            ws10.append(2)
+            ws50.append(3)
+            ws100.append(4)
 
-            wd10.append(wd[0])
-            
-            wd50.append(wd[1])
-            wd100.append(wd[2])
+            wd10.append(2)
+            wd50.append(3)
+            wd100.append(4)
+
+            # wd10.append(wd[0])
+            # wd50.append(wd[1])
+            # wd100.append(wd[2])
 
             t2.append(float(ft2[timeNo,yGrid,xGrid]))
                                 
@@ -220,10 +226,14 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
         wsAvg50=np.mean(ws50)
         wsAvg100=np.mean(ws100)
 
-        wdAvg10=meanWindDirection(wd10)
-        wdAvg50=meanWindDirection(wd50)
-        wdAvg100=meanWindDirection(wd100)
+        # wdAvg10=meanWindDirection(wd10)
+        # wdAvg50=meanWindDirection(wd50)
+        # wdAvg100=meanWindDirection(wd100)
         
+        wdAvg10=10
+        wdAvg50=50
+        wdAvg100=100
+
         tAvg=np.mean(t2)
         tMax=np.max(t2)
         psfcAvg=np.mean(psfc)
@@ -280,7 +290,7 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
    
     siteList=siteKontrolText.split("|")
     
-    myclient = MongoClient("mongodb://localhost:27017/")
+    myclient = MongoClient("mongodb://89.252.157.127:27017/")
     
     mydbMongoDB = myclient["dbVentus"] #db
    

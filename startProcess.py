@@ -16,8 +16,9 @@ if __name__=="__main__":
     print("Read NC File")
 
     # filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
+    filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
 
-    filePath="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_00.nc"
+    # filePath="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_00.nc"
     f=nc.Dataset(filePath)
 
     fu10 = np.array(f.variables['U10'][:,:,:].data)
@@ -65,13 +66,13 @@ if __name__=="__main__":
     
     siteGridTableDF=pd.DataFrame(siteGridTable,columns=["siteId","modelGridListId","meteoModelListId","xGrid","yGrid"])
 
-    startHour=abs(int(sys.argv[1]))
+    # startHour=abs(int(sys.argv[1]))
 
-    endHour=abs(int(sys.argv[2]))
+    # endHour=abs(int(sys.argv[2]))
 
-    # startHour=10
+    startHour=10
 
-    # endHour=30
+    endHour=30
     if __name__=="__main__":
 
 
