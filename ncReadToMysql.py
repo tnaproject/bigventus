@@ -173,9 +173,7 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
 
                 dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
 
-                
-
-         
+       
             dataValueList=[]
 
             kolonSayi=0
@@ -198,23 +196,15 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
                                 
             v.append(fv100[timeNo,yGrid,xGrid])
 
-            # ws,wd=wind_convert(u,v)
+            ws,wd=wind_convert(u,v)
 
-            # ws10.append(ws[0])
-            # ws50.append(ws[1])
-            # ws100.append(ws[2])
+            ws10.append(ws[0])
+            ws50.append(ws[1])
+            ws100.append(ws[2])
 
-            ws10.append(2)
-            ws50.append(3)
-            ws100.append(4)
-
-            wd10.append(2)
-            wd50.append(3)
-            wd100.append(4)
-
-            # wd10.append(wd[0])
-            # wd50.append(wd[1])
-            # wd100.append(wd[2])
+            wd10.append(wd[0])
+            wd50.append(wd[1])
+            wd100.append(wd[2])
 
             t2.append(float(ft2[timeNo,yGrid,xGrid]))
                                 
@@ -226,13 +216,11 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
         wsAvg50=np.mean(ws50)
         wsAvg100=np.mean(ws100)
 
-        # wdAvg10=meanWindDirection(wd10)
-        # wdAvg50=meanWindDirection(wd50)
-        # wdAvg100=meanWindDirection(wd100)
+        wdAvg10=meanWindDirection(wd10)
+        wdAvg50=meanWindDirection(wd50)
+        wdAvg100=meanWindDirection(wd100)
         
-        wdAvg10=10
-        wdAvg50=50
-        wdAvg100=100
+
 
         tAvg=np.mean(t2)
         tMax=np.max(t2)
@@ -393,80 +381,39 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
 
 
     maxThread=-9999
+    runningThreadCount=0
 
     for thrd in range(0,len(threadArr)):
 
         threadArr[thrd].start()
-        
-        if maxThread==-9999:
 
-            time.sleep(2)
+        runningThreadCount+=1
 
-            if threading.activeCount()<4:
+       
+          
 
-                maxThread=6
+        if threading.activeCount()<10:
+
+            maxThread=12
                     
-            else:
+        else:
 
-                maxThread=4
+            maxThread=9
 
+        if runningThreadCount>maxThread:
 
-        aliveThreadCount=0 
+            print("Running Thread Count:"+str(runningThreadCount))
 
-        for thrSay in range(0,thrd):
-
-            if threadArr[thrSay].is_alive():
-
-                aliveThreadCount+=1
-
-
-
-        if aliveThreadCount>maxThread:
+            threadArr[thrd-maxThread].join()
             
-            print("Running Thread Count:"+str(aliveThreadCount)+"/ Allowed Thread Count:"+str(maxThread),end="\r")
-
-
-            while aliveThreadCount>maxThread:
-                        
-                if threading.activeCount()<10:
-
-                    maxThread=13
-                    
-                else:
-
-                    maxThread=8
-                
-                aliveThreadCount=0
-
-                for thrSay in range(0,thrd):
-                    if threadArr[thrSay].is_alive():
-                        aliveThreadCount+=1
-                
+            runningThreadCount-=(maxThread-1)
 
 
 
+    print("Waiting Last Thread",end="\r")
 
 
-
-
-    aliveThreadCount=1
-
-    tmpAliveThreadCount=0
-
-    while aliveThreadCount>0:
-
-        if aliveThreadCount>0:
-            tmpAliveThreadCount=aliveThreadCount
-
-        print("Waiting Thread Count:"+str(tmpAliveThreadCount))
-
-        aliveThreadCount=0
-
-        for thrSay in range(0,thrd):
-
-            
-            if threadArr[thrSay].is_alive():
-                aliveThreadCount+=1
+    threadArr[len(threadArr)-1].join()
 
             
             
@@ -485,7 +432,7 @@ def threadRunnner(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF
 
         print("Start Process")
 
-        readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,startHour,endHour,)
+        readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,startHour,endHour)
 
         
         
