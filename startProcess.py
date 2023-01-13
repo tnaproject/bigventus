@@ -15,8 +15,8 @@ if __name__=="__main__":
 
     print("Read NC File")
 
-    filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
-    # filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
+    # filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
+    filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
 
     # filePath="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_00.nc"
     f=nc.Dataset(filePath)

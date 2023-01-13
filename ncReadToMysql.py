@@ -319,6 +319,8 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
         
     # f.close()
 
+def futureAnswer(future):
+    print(future.result())
 
 
 def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime):
@@ -360,7 +362,11 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
 
     threadArr=[]
 
+    futures=[]
+
+    executor=concurrent.futures.ProcessPoolExecutor(max_workers=5)
     
+
     for timeNo in range(1,ftime.shape[0],6):
 
         dataTime=pd.to_datetime(timeTotxt(ftime[timeNo]))+timedelta(hours=3)
@@ -371,49 +377,54 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
         
         if (hourDiff>=dataStartHourTime and hourDiff<dataEndHourTime):
        
-        
+            futures.append(executor.submit(readNCAndWriteToMongo,ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime,))
+
                     
-            threadArr.append(threading.Thread(target=readNCAndWriteToMongo,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime)))
+            #threadArr.append(threading.Thread(target=readNCAndWriteToMongo,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime)))
 
             
 
+    for future in futures:
+        future.add_done_callback(futureAnswer)
 
+    print("Waiting Last Thread",end="\r")
+    executor.shutdown()
 
+    # maxThread=-9999
+    # runningThreadCount=0
 
-    maxThread=-9999
-    runningThreadCount=0
+    # for thrd in range(0,len(threadArr)):
 
-    for thrd in range(0,len(threadArr)):
+    #     threadArr[thrd].start()
 
-        threadArr[thrd].start()
-
-        runningThreadCount+=1
+    #     runningThreadCount+=1
 
        
           
 
-        if threading.activeCount()<10:
+    #     if threading.activeCount()<10:
 
-            maxThread=12
+    #         maxThread=12
                     
-        else:
+    #     else:
 
-            maxThread=9
+    #         maxThread=9
 
-        if runningThreadCount>maxThread:
+    #     if runningThreadCount>maxThread:
 
-            print("Running Thread Count:"+str(runningThreadCount))
+    #         print("Running Thread Count:"+str(runningThreadCount))
 
-            threadArr[thrd-maxThread].join()
+    #         threadArr[thrd-maxThread].join()
             
-            runningThreadCount-=(maxThread-1)
+    #         runningThreadCount-=(maxThread-1)
 
 
 
-    print("Waiting Last Thread",end="\r")
+    # print("Waiting Last Thread",end="\r")
 
 
-    threadArr[len(threadArr)-1].join()
+    # threadArr[len(threadArr)-1].join()
+    print("Bitti")
 
             
             
