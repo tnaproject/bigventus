@@ -8,6 +8,10 @@ from multiprocessing import Process
 from datetime import datetime
 import sys
 import time
+import concurrent.futures
+
+def futureAnswer(future):
+    print(future.result())
 
 if __name__=="__main__":
     
@@ -15,8 +19,8 @@ if __name__=="__main__":
 
     print("Read NC File")
 
-    # filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
-    filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
+    filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
+    # filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
 
     # filePath="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_00.nc"
     f=nc.Dataset(filePath)
@@ -79,11 +83,20 @@ if __name__=="__main__":
         with open("config.json","r") as file:
 
             dbApiInfo=json.load(file)
+        futures=[]
+
+        executor=concurrent.futures.ProcessPoolExecutor(max_workers=4)
 
         runNC_1(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,1,siteGridTableDF,startHour,endHour)
 
+        futures.append(executor.submit(runNC_1,ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,1,siteGridTableDF,10,25))
+        futures.append(executor.submit(runNC_1,ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,1,siteGridTableDF,25,40))
+        futures.append(executor.submit(runNC_1,ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,1,siteGridTableDF,40,55))
+        for future in futures:
+            future.add_done_callback(futureAnswer)
 
-      
+        print("Process Waiting",end="\r")
+        executor.shutdown()
         print("Process End")
     
         print((datetime.now()-baslangicZamani).total_seconds()/60)

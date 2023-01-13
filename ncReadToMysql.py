@@ -364,7 +364,7 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
 
     futures=[]
 
-    executor=concurrent.futures.ProcessPoolExecutor(max_workers=5)
+    executor=concurrent.futures.ProcessPoolExecutor(max_workers=8)
     
 
     for timeNo in range(1,ftime.shape[0],6):
@@ -424,7 +424,8 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
 
 
     # threadArr[len(threadArr)-1].join()
-    print("Bitti")
+    print("Bitti "+str(dataStartHourTime))
+    
 
             
             
