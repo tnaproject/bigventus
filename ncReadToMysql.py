@@ -278,7 +278,7 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
    
     siteList=siteKontrolText.split("|")
     
-    myclient = MongoClient("mongodb://89.252.157.127:27017/")
+    myclient = MongoClient("mongodb://localhost:27017/")
     
     mydbMongoDB = myclient["dbVentus"] #db
    
@@ -365,7 +365,7 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
     futures=[]
 
     executor=concurrent.futures.ProcessPoolExecutor(max_workers=5)
-    
+
 
     for timeNo in range(1,ftime.shape[0],6):
 
