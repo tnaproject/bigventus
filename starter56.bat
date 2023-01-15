@@ -1,1 +1,0 @@
-python ncReadToMysql.py -47 -55

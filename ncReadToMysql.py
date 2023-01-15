@@ -125,15 +125,17 @@ def meanWindDirection(windDirections):
         V_north[i] = np.mean(math.cos(windDirections[i] * math.pi/180))
 
     mean_WD = math.atan2(np.mean(V_east),np.mean(V_north)) * 180/math.pi
+
     mean_WD = (360 + mean_WD) % 360
 
     return mean_WD
 
  
 
-def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyGridList,siteGridList,modelNo,startHour):
+def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,xyList,siteTableDF,site,siteGridList,modelNo,startHour,init,modelName):
     
     siteDictList={}
+    siteTimeList={}
 
     siteKontrolText=""
 
@@ -142,229 +144,370 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,xyG
     baslamaZamani=datetime.now()
     
     print("Start Hour:"+str(startHour)+">"+str(startTime)+" Loading")
- 
-
-    for xyGridNo in range(0,len(xyGridList)):
+                
+    for xyGridNo in range(0,len(xyList)):
         
-        yGrid=int(xyGridList[xyGridNo][0])
+        yGrid=int(xyList[xyGridNo][0])
 
-        xGrid=int(xyGridList[xyGridNo][1])
-
-        ws10=[]
-        ws50=[]
-        ws100=[]
-        wd10=[]
-        wd50=[]
-        wd100=[]
-        t2=[]
-        psfc=[]
+        xGrid=int(xyList[xyGridNo][1])
 
         tmpSiteGridList=siteGridList[(siteGridList["xGrid"]==xGrid) & (siteGridList["yGrid"]==yGrid)]
         
-        modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
+
+        if tmpSiteGridList.shape[0]>0:
+
+                    
+            ws10=[]
+            ws50=[]
+            ws100=[]
+            wd10=[]
+            wd50=[]
+            wd100=[]
+            t2=[]
+            psfc=[]
+
+            rh2=[]
+            ghi=[]
+            diff=[]
+            accprec=[]
+            snow=[]
+
+        
+        
+            modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
 
         
 
-        siteGridValueDict={}
-        
-        for timeNo in range(0,fTimeArr.shape[0]):
+            siteGridValueDict={}
+
+
+            tableName="trainTable_"+str(tmpSiteGridList.iloc[0]["siteId"])
             
-            if pd.to_datetime(timeTotxt(fTimeArr[timeNo])).minute==0:
+            modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
 
-                dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
+            siteInfoTable=siteTableDF[siteTableDF["siteId"]==tmpSiteGridList.iloc[0]["siteId"]]
 
+            for siteSay in range(0,siteInfoTable.shape[0]):
+            
+        
+                for timeNo in range(0,fTimeArr.shape[0]):
+      
+            
+                    if pd.to_datetime(timeTotxt(fTimeArr[timeNo])).minute==0:
+
+                        dataTime=pd.to_datetime(timeTotxt(fTimeArr[timeNo]))+timedelta(hours=3)
+
+                  
+                        if (siteInfoTable.iloc[siteSay]["siteTypeId"]==1):
        
-            dataValueList=[]
+                            u=[] 
 
-            kolonSayi=0
-   
-            u=[] 
+                            v=[]
 
-            v=[]
-
-            kolonSayi+=1
-                     
-            u.append(fu10[timeNo,yGrid,xGrid])
+                            u.append(fu10[timeNo,yGrid,xGrid])
                                 
-            v.append(fv10[timeNo,yGrid,xGrid])
+                            v.append(fv10[timeNo,yGrid,xGrid])
                               
-            u.append(fu50[timeNo,yGrid,xGrid])
+                            u.append(fu50[timeNo,yGrid,xGrid])
                                 
-            v.append(fv50[timeNo,yGrid,xGrid])
+                            v.append(fv50[timeNo,yGrid,xGrid])
 
-            u.append(fu100[timeNo,yGrid,xGrid])
+                            u.append(fu100[timeNo,yGrid,xGrid])
                                 
-            v.append(fv100[timeNo,yGrid,xGrid])
+                            v.append(fv100[timeNo,yGrid,xGrid])
 
-            ws,wd=wind_convert(u,v)
+                            ws,wd=wind_convert(u,v)
 
-            ws10.append(ws[0])
-            ws50.append(ws[1])
-            ws100.append(ws[2])
+                            ws10.append(ws[0])
 
-            wd10.append(wd[0])
-            wd50.append(wd[1])
-            wd100.append(wd[2])
+                            ws50.append(ws[1])
 
-            t2.append(float(ft2[timeNo,yGrid,xGrid]))
+                            ws100.append(ws[2])
+
+                            wd10.append(wd[0])
+            
+                            wd50.append(wd[1])
+
+                            wd100.append(wd[2])
+
+                            t2.append(float(ft2[timeNo,yGrid,xGrid]))
                                 
-            psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+                            psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+       
+                            tAvg=np.mean(t2)
 
-            
-            
-        wsAvg10=np.mean(ws10)                    
-        wsAvg50=np.mean(ws50)
-        wsAvg100=np.mean(ws100)
+                            tMax=np.max(t2)
 
-        wdAvg10=meanWindDirection(wd10)
-        wdAvg50=meanWindDirection(wd50)
-        wdAvg100=meanWindDirection(wd100)
+                            psfcAvg=np.mean(psfc)
+
         
+                            siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(ws10) ,2)
+                            siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(ws50),2)
+                            siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(ws100),2)
 
-
-        tAvg=np.mean(t2)
-        tMax=np.max(t2)
-        psfcAvg=np.mean(psfc)
+                            siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(meanWindDirection(wd10),2)
+                            siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(meanWindDirection(wd50),2)
+                            siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(meanWindDirection(wd100),2)
         
-        siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg10,2)
-        siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg50,2)
-        siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wsAvg100,2)
+                            siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tAvg,2)
+                            siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tMax,2)
+                            siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(psfcAvg,2)
 
-        siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg10,2)
-        siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg50,2)
-        siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(wdAvg100,2)
+                            siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
+
+                            siteGridValueDict["init"]=init
+                            
+                            siteGridValueDict["f_WS10_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+                            siteGridValueDict["f_WS50_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+                            siteGridValueDict["f_WS100_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.00
+
+
+                        else:
+
+                            u=[] 
+
+                            v=[]
+
+                            u.append(fu10[timeNo,yGrid,xGrid])
+                                
+                            v.append(fv10[timeNo,yGrid,xGrid])
+                              
+                            ws,wd=wind_convert(u,v)
+
+                            ws10.append(ws[0])
+
+                            wd10.append(wd[0])
+
+                            t2.append(float(ft2[timeNo,yGrid,xGrid]))
+
+                            rh2.append(float(frh2[timeNo,yGrid,xGrid]))
+
+                            ghi.append(float(fghi[timeNo,yGrid,xGrid]))
+
+                            diff.append(float(fdiff[timeNo,yGrid,xGrid]))
+
+                            accprec.append(float(faccprec[timeNo,yGrid,xGrid]))
+
+                            snow.append(float(fsnow[timeNo,yGrid,xGrid]))
+
+                            accprec.append(float(faccprec[timeNo,yGrid,xGrid]))
+
+                            siteGridValueDict["SUM_SNOW_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.sum(snow),2)
+
+                            siteGridValueDict["SUM_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.sum(accprec),2)
+
+                            siteGridValueDict["MAX_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.max(accprec),2)
+ 
+                            siteGridValueDict["MAX_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.max(ghi),2)
+
+                            siteGridValueDict["AVG_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(ghi),2)
+
+                            siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(ws10),2)
+
+                            siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(meanWindDirection(wd10),2)
+
+                            siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(t2),2)
+
+                            siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.max(t2),2)
+
+                            siteGridValueDict["AVG_RH_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(np.mean(rh2),2)
+
+                            siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
+
+                            siteGridValueDict["init"]=init
+
+                            siteGridValueDict["f_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+
+                        
+                        tableName="trainTable_"+str(siteInfoTable.iloc[siteSay]["siteId"])
+
+
+                        if siteKontrolText.__contains__(tableName+"|")==False:
+                            if siteKontrolText=="":
+
+                                siteKontrolText=tableName+"|"
+
+                            else:
+
+                                siteKontrolText+=tableName+"|"
+
+                            siteDictList[tableName]=[]
+                            siteTimeList[tableName]=[]
+
+                        siteGridValueDict["f_WS10_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+                        siteGridValueDict["f_WS50_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+                        siteGridValueDict["f_WS100_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.00
+
+                        newvalues = { "$set": siteGridValueDict }
+
+                        myquery = {"dataTime": dataTime}
+
+                        siteDictList[tableName].append(UpdateMany(myquery,newvalues,upsert=True))
+
+                        if modelName=="GFS":
+                            siteTimeList[tableName]={"siteTable":tableName,"lastDataTime":dataTime,"GFS_INIT":init}
+                        else:
+                            siteTimeList[tableName]={"siteTable":tableName,"lastDataTime":dataTime,"ICON_INIT":init}
+
+                    #site type sonu
+
+                    else:
+
+                        if (siteInfoTable.iloc[siteSay]["siteTypeId"]==1):
+       
+                            u=[] 
+
+                            v=[]
+
+                            u.append(fu10[timeNo,yGrid,xGrid])
+                                
+                            v.append(fv10[timeNo,yGrid,xGrid])
+                              
+                            u.append(fu50[timeNo,yGrid,xGrid])
+                                
+                            v.append(fv50[timeNo,yGrid,xGrid])
+
+                            u.append(fu100[timeNo,yGrid,xGrid])
+                                
+                            v.append(fv100[timeNo,yGrid,xGrid])
+
+                            ws,wd=wind_convert(u,v)
+
+                            ws10.append(ws[0])
+
+                            ws50.append(ws[1])
+
+                            ws100.append(ws[2])
+
+                            wd10.append(wd[0])
+            
+                            wd50.append(wd[1])
+
+                            wd100.append(wd[2])
+
+                            t2.append(float(ft2[timeNo,yGrid,xGrid]))
+                                
+                            psfc.append(float(fpsfc[timeNo,yGrid,xGrid]))
+       
+
+
         
-        siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tAvg,2)
-        siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=np.round(tMax,2)
-        siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(psfcAvg,2)
-        siteGridValueDict["dataTime"]=pd.to_datetime(dataTime)
+                        else:
 
-        for i in range(0,tmpSiteGridList.shape[0]):
+                            u=[] 
 
-            tableName="trainTable_"+str(tmpSiteGridList.iloc[i]["siteId"])
+                            v=[]
 
-            if siteKontrolText.__contains__(tableName+"|")==False:
-                if siteKontrolText=="":
+                            u.append(fu10[timeNo,yGrid,xGrid])
+                                
+                            v.append(fv10[timeNo,yGrid,xGrid])
+                              
+                            ws,wd=wind_convert(u,v)
 
-                    siteKontrolText=tableName+"|"
+                            ws10.append(ws[0])
 
-                else:
+                            wd10.append(wd[0])
 
-                    siteKontrolText+=tableName+"|"
+                            t2.append(float(ft2[timeNo,yGrid,xGrid]))
 
-                siteDictList[tableName]=[]
+                            rh2.append(float(frh2[timeNo,yGrid,xGrid]))
 
-           
-            # pw10=calcWindPower.windPowerList(tmpSiteGridList.iloc[i]["siteId"],1.225,ws10)
-            
-            # pw50=calcWindPower.windPowerList(tmpSiteGridList.iloc[i]["siteId"],1.225,ws50)
+                            ghi.append(float(fghi[timeNo,yGrid,xGrid]))
 
-            # pw100=calcWindPower.windPowerList(tmpSiteGridList.iloc[i]["siteId"],1.225,ws100)
+                            diff.append(float(fdiff[timeNo,yGrid,xGrid]))
 
-            # siteGridValueDict["f_WS10_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(pw10[0],2)
-            # siteGridValueDict["f_WS50_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(pw50[1],2)
-            # siteGridValueDict["f_WS100_"+str(modelGridNo)+"_"+str(modelNo)]=np.round(pw100[2],2)
+                            accprec.append(float(faccprec[timeNo,yGrid,xGrid]))
 
-            siteGridValueDict["f_WS10_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
-            siteGridValueDict["f_WS50_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
-            siteGridValueDict["f_WS100_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.00
-            newvalues = { "$set": siteGridValueDict }
+                            snow.append(float(fsnow[timeNo,yGrid,xGrid]))
 
-            myquery = {"dataTime": dataTime}
+                            accprec.append(float(faccprec[timeNo,yGrid,xGrid]))
 
-            siteDictList[tableName].append(UpdateMany(myquery,newvalues,upsert=True))
-
-            
-   
+    
+    
     siteList=siteKontrolText.split("|")
     
-    myclient = MongoClient("mongodb://89.252.157.127:27017/")
+    myclient = MongoClient("mongodb://localhost:27017/")
     
     mydbMongoDB = myclient["dbVentus"] #db
+
    
+
+    
 
     for site in siteList:
 
         if site!="":
 
+            kontrol=False
+
             for i in range(0,4):
+
                 try:
 
-                    mongoCol= mydbMongoDB[site]
+                    if kontrol==False:
+                      
 
-                    mongoCol.bulk_write(siteDictList[site])
+                        mongoCol= mydbMongoDB[site]
 
-                    mongoCol.create_index("dataTime", unique = True)
+                        mongoCol.bulk_write(siteDictList[site])
+
+                        mongoCol.create_index("dataTime", unique = True)
+
+                        siteTimeList[tableName]["updateTime"]=datetime.now()
+
+                        mongoCol=mydbMongoDB["siteTimeList"]
+
+                        newvalues = { "$set": siteTimeList[site] }
+
+                        myquery = {"siteTable": site}
+
+                        mongoCol.update_one(myquery,newvalues,upsert=True)
+
+
+                        kontrol=True
+
+
 
                 except:
+
                     if i<3:
                         continue
                     else:
                         raise
                     break
 
-    myclient.close()
+                if kontrol==True:
+
+                    break
+
+
+    
+    myclient.close() 
 
     print("Start Hour:"+str(startHour)+"> "+str(startTime)+" Loaded >"+str(((datetime.now()-baslamaZamani).total_seconds()/60)))
     
     
-    return str(dataTime)+" bitti "+str(datetime.now())
-
-
-
-        
-
-            
-
-        
-    # f.close()
+    return "Done"
 
 def futureAnswer(future):
-    print(future.result())
+    
+    cvp=future.result()
 
 
-def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime):
-      
+def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName):
+       
+    
     #ilk Veri Zamanı
     startTime=pd.to_datetime(timeTotxt(ftime[0]))+timedelta(hours=3)
-    processStartTime=datetime.now()
-    xyList=[]
 
-    xyKontrol=""
-
-    siteId=[]
-
-    siteIdKontrol=""
-
-    for rowCount in range(0,siteGridListDF.shape[0]):
-        if xyKontrol.__contains__(str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"]))==False:
-            if xyKontrol=="":
-                xyKontrol=str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"])
-            else:
-                xyKontrol+="|"+str(siteGridListDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridListDF.iloc[rowCount]["xGrid"])
-
-            xyList.append([str(siteGridListDF.iloc[rowCount]["yGrid"]),str(siteGridListDF.iloc[rowCount]["xGrid"])])
-
-        if siteIdKontrol.__contains__(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")==False:
-            if siteIdKontrol=="":
-                siteIdKontrol=str(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")
-                
-            else:
-                siteIdKontrol=str(str(siteGridListDF.iloc[rowCount]["siteId"])+"|")
-            
-            siteId.append(siteGridListDF.iloc[rowCount]["siteId"])
-
-    
     
     if ftime.shape[0]!=325:
 
         return
 
-    threadArr=[]
-
     futures=[]
 
-    executor=concurrent.futures.ProcessPoolExecutor(max_workers=5)
+    executor=concurrent.futures.ProcessPoolExecutor(max_workers=3)
     
 
     for timeNo in range(1,ftime.shape[0],6):
@@ -376,77 +519,32 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGrid
         hourDiff=hourDiff/60
         
         if (hourDiff>=dataStartHourTime and hourDiff<dataEndHourTime):
-       
-            futures.append(executor.submit(readNCAndWriteToMongo,ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime,))
 
-                    
-            #threadArr.append(threading.Thread(target=readNCAndWriteToMongo,args=(ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],xyList,siteGridListDF,modelNo,dataStartHourTime)))
+            futures.append(executor.submit(readNCAndWriteToMongo,ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],frh2[timeNo:timeNo+6],fghi[timeNo:timeNo+6],fdiff[timeNo:timeNo+6],faccprec[timeNo:timeNo+6],fsnow[timeNo:timeNo+6],xyList,siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,))
 
-            
 
     for future in futures:
         future.add_done_callback(futureAnswer)
 
-    print("Waiting Last Thread",end="\r")
+    
     executor.shutdown()
 
-    # maxThread=-9999
-    # runningThreadCount=0
 
-    # for thrd in range(0,len(threadArr)):
+    
 
-    #     threadArr[thrd].start()
-
-    #     runningThreadCount+=1
-
-       
-          
-
-    #     if threading.activeCount()<10:
-
-    #         maxThread=12
-                    
-    #     else:
-
-    #         maxThread=9
-
-    #     if runningThreadCount>maxThread:
-
-    #         print("Running Thread Count:"+str(runningThreadCount))
-
-    #         threadArr[thrd-maxThread].join()
-            
-    #         runningThreadCount-=(maxThread-1)
-
-
-
-    # print("Waiting Last Thread",end="\r")
-
-
-    # threadArr[len(threadArr)-1].join()
-    print("Bitti")
+    return "bitti"
+    
 
             
             
 
     
     
- 
-  
-def threadRunnner(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,startHour,endHour):
 
   
-    #readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,startHour,endHour)
-       
 
-        print(datetime.now())
 
-        print("Start Process")
 
-        readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridListDF,modelNo,startHour,endHour)
-
-        
-        
 
 
 
@@ -572,12 +670,15 @@ def timeTotxt(timeTXT):
     return timeTotxt
 
 
+                
+def runNCWriter(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,modelNo,xyList,siteTableDF,siteIdList,siteGridTableDF,startHour,endHour):
 
-def runNCWriter(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,modelNo,siteGridTableDF,startHour,endHour):
 
+                        
+    readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,xyList,siteTableDF,siteIdList,siteGridTableDF,modelNo,startHour,endHour)
 
+        
 
-        threadRunnner(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,siteGridTableDF,modelNo,startHour,endHour)
 
 
 
@@ -586,7 +687,6 @@ def runNCWriter(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,modelNo,siteGrid
 # runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
 
 # runNCWriter('1',"C:\\Users\\user\\Downloads\Gfs\\wrfpost_2022-11-30_00.nc")
-
 
 
 

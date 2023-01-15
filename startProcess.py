@@ -1,68 +1,73 @@
-from ncReadToMysql import runNCWriter as runNC_1
+from ncReadToMysql import readwriteNCWithPool as runNC_1
 import numpy as np
 import netCDF4 as nc
 import pandas as pd
 import mysql.connector
 import json
-from multiprocessing import Process
-from datetime import datetime
+from datetime import datetime,timedelta,time
 import sys
 import time
 import concurrent.futures
+import math
+import shutil
+import os
 
-def futureAnswer(future):
-    print(future.result())
+def runMainProcess(filePath,ncsStartHour,ncEndHour,fileDirectory):
+    
+    if __name__!="__main__": 
+        return
 
-if __name__=="__main__":
+    print("The Name of Written File >"+filePath)
     
     baslangicZamani=datetime.now()
 
     print("Read NC File")
 
-    # filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
-    filePath="C:\\Users\\user\\Downloads\\Gfs\\wrfpost_2022-11-30_00.nc"
 
-    filePath="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_00.nc"
     f=nc.Dataset(filePath)
 
+    ftime  =  np.array(f.variables['Time'][:,:].data)
     fu10 = np.array(f.variables['U10'][:,:,:].data)
     fu10 = np.array(f.variables['U10'][:,:,:].data)
     fu50 = np.array(f.variables['U50'][:,:,:].data)
     fu100 = np.array(f.variables['U100'][:,:,:].data)
-    fu200 = f.variables['U200'][:,:,:].data
+    # fu200 = f.variables['U200'][:,:,:].data
     fv10 = np.array(f.variables['V10'][:,:,:].data)
     fv50   = np.array(f.variables['V50'][:,:,:].data)
     fv100  = np.array(f.variables['V100'][:,:,:].data)
-    # fv200  = np.array(f.variables['V200'][:,:,:].data)
+    fv200  = np.array(f.variables['V200'][:,:,:].data)
     ft2    = np.array(f.variables['T2'][:,:,:].data)
-    frh2   = f.variables['RH2'][:,:,:].data
+    frh2   = np.array(f.variables['RH2'][:,:,:].data)
     fpsfc  = np.array(f.variables['PSFC'][:,:,:].data)
-        # fghi   = f.variables['GHI'][:,:,:].data
-        # fdiff  = f.variables['DIFF'][:,:,:].data
-    ftime  =  np.array(f.variables['Time'][:,:].data)
-        # faccprec=f.variables['AccPrec'][:,:,:].data
-        # fsnow  = f.variables['SNOW'][:,:,:].data
-
-    #ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc
-    
+    fghi   = np.array(f.variables['GHI'][:,:,:].data)
+    fdiff  = np.array(f.variables['DIFF'][:,:,:].data)
+    faccprec=np.array(f.variables['AccPrec'][:,:,:].data)
+    fsnow  = np.array(f.variables['SNOW'][:,:,:].data)
+    ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow
     f.close()
 
+    #model Id Belirle
+    modelNo=1
+
+    if "ICON" in fileDirectory:
+
+        modelNo=2
+
+
+
+
+    #Gerekli Bilgileri Al
     with open("config.json","r") as file:
 
         dbApiInfo=json.load(file)
 
     myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
 
-    selectTxt="Select * From siteList where epiasEIC > 0"
+    # select içinde modelno Göndermeyi unutma
+    selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId="+str(modelNo)
 
     cursor=myDBConnect.cursor()
-            
-    cursor.execute(selectTxt)
-    
-    siteTable = cursor.fetchall()
-   
-    # select içinde modelno Göndermeyi unutma
-    selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId=1"
 
     cursor.execute(selectTxt)
  
@@ -70,27 +75,246 @@ if __name__=="__main__":
     
     siteGridTableDF=pd.DataFrame(siteGridTable,columns=["siteId","modelGridListId","meteoModelListId","xGrid","yGrid"])
 
-    # startHour=abs(int(sys.argv[1]))
 
-    # endHour=abs(int(sys.argv[2]))
+    #site listesi
+    selectTxt="Select id,siteTypeId From siteList where activation=1"
 
-    startHour=10
+    cursor.execute(selectTxt)
+ 
+    siteTable = cursor.fetchall()
+    
+    siteTableDF=pd.DataFrame(siteTable,columns=["siteId","siteTypeId"])
 
-    endHour=30
-    if __name__=="__main__":
+    myDBConnect.close()
 
 
-        with open("config.json","r") as file:
+   
 
-            dbApiInfo=json.load(file)
-        futures=[]
+    xyList=[]
+    siteIdList=[]
+    siteIdKontrol=""
 
-        executor=concurrent.futures.ProcessPoolExecutor(max_workers=4)
+    xyKontrol=""
 
-        runNC_1(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,1,siteGridTableDF,startHour,endHour)
+    for rowCount in range(0,siteGridTableDF.shape[0]):
 
+        if xyKontrol.__contains__(str(siteGridTableDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridTableDF.iloc[rowCount]["xGrid"]))==False:
+            if xyKontrol=="":
+                xyKontrol=str(siteGridTableDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridTableDF.iloc[rowCount]["xGrid"])
+            else:
+                xyKontrol+="|"+str(siteGridTableDF.iloc[rowCount]["yGrid"])+"-"+str(siteGridTableDF.iloc[rowCount]["xGrid"])
+
+            xyList.append([str(siteGridTableDF.iloc[rowCount]["yGrid"]),str(siteGridTableDF.iloc[rowCount]["xGrid"])])
+
+            
+          
+        
+    hourDiff=ncEndHour-ncsStartHour
+        
+    hourPeriod=math.ceil(hourDiff/4)
+
+    processExecutor=concurrent.futures.ProcessPoolExecutor(max_workers=2)
+
+    tmpHourStartHour=ncsStartHour
+
+
+    print("Başlıyoruz.....")
+
+    
+    futuresList=[]
+
+    init=0
+    
+    if "_06" in filePath:
+        init=6
+    elif "_12" in filePath:
+        init=12
+    elif "_18" in filePath:
+        init=18
+    
+    modelName="WRF_GFS"
+
+    if "_ICON" in fileDirectory:
+
+        modelName="WRF_ICON"
+
+    
+    while tmpHourStartHour<ncEndHour:
+
+
+        futuresList.append(processExecutor.submit(runNC_1,ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,xyList,siteTableDF,siteGridTableDF,modelNo,tmpHourStartHour,(tmpHourStartHour+hourPeriod),init,modelName))
+
+        tmpHourStartHour+=hourPeriod
 
       
-        print("Process End")
+    threadBitti=0
+
+    for future in concurrent.futures.as_completed(futuresList):
+
+        future.result()
+        print(str(threadBitti)+" Bitti")
+        threadBitti+=1
+
+      
+    print("Process End")
     
-        print((datetime.now()-baslangicZamani).total_seconds()/60)
+    print((datetime.now()-baslangicZamani).total_seconds()/60)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+
+    print("Log Yazılıyor")
+
+    insertTXT="Insert Into modelFileWriteLog(fileName,modelName,writeStartTime,writeEndTime) VALUES('"+filePath+"','"+modelName+"','"+str(baslangicZamani)+"','"+str(datetime.now())+"')"
+
+    cursor=myDBConnect.cursor()
+    
+    cursor.execute(insertTXT)
+    
+    myDBConnect.commit()
+
+    myDBConnect.close()
+
+    print("Log Yazıldı")
+
+    os.remove(filePath)
+
+
+
+
+# filePath="I:\\Belgeler\\Lazımlık\\Ozel\\modelWorks\\WRF_GFS\\wrfpost_2022-11-15_00.nc"
+
+
+def fileCopy(destFile,targetFile,init,fileDateTime,filePath,targetPath):
+    resultCopy=-1
+
+    try:
+        if os.path.exists(destFile)==True:
+
+            shutil.copyfile(destFile, targetFile)
+
+            resultCopy=0
+
+        else:
+
+            oldDayFileName=fileDateTime-timedelta(days=1)
+        
+            tmpFileName="wrfpost_"+oldDayFileName.strftime("%Y-%m-%d")+"_18.nc"
+            
+            destFile=filePath+tmpFileName
+
+            if os.path.exists(destFile)==True:
+
+                targetFile=targetPath+tmpFileName
+            
+                shutil.copyfile(destFile,targetFile)
+
+                resultCopy=18
+
+    except :
+
+        resultCopy=-1  
+
+
+    return resultCopy
+    
+
+
+
+if __name__=="__main__": 
+
+    
+
+
+     #Gerekli Bilgileri Al
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
+
+    # select içinde modelno Göndermeyi unutma
+
+    selectTxt="Select fileName,modelName From modelFileWriteLog"
+
+    cursor=myDBConnect.cursor()
+
+    cursor.execute(selectTxt)
+ 
+    fileTable = cursor.fetchall()
+    
+    fileTableDF=pd.DataFrame(fileTable,columns=["fileName","modelName"])
+
+    # 
+    
+    fileBaslangicZaman=pd.to_datetime("2019-01-01")
+
+    modelDirectoryId="GFS"
+
+    
+    if sys.argv[1]=='-2':
+        modelDirectoryId="WRF_ICON"
+    elif sys.argv[1]=='-1':
+        modelDirectoryId="WRF_GFS"
+        
+    os.system("mount -t nfs 192.168.20.28:/qNAPN2_vLM2_iMEFsys /mnt/qNAPN2_vLM2_iMEFsys")
+
+    fileDirectory="/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/"+modelDirectoryId
+    
+    while (fileBaslangicZaman-datetime.now()).total_seconds()<0:
+       
+        for i in range(0,5):
+
+            try:
+
+                fileName="wrfpost_"+datetime.strftime(fileBaslangicZaman,"%Y-%m-%d")+"_00.nc"
+
+                tmpFileList=fileTableDF[(fileTableDF["fileName"]==fileName)&(fileTableDF["modelName"]==modelDirectoryId)]
+        
+                if tmpFileList.shape[0]<=0:
+
+                    initTime=fileCopy(fileDirectory+"/"+fileName,fileName,0,fileBaslangicZaman,fileDirectory+"/","")
+
+                    if initTime!=-1:
+                        
+                        lastHour=55
+
+                        if (((datetime.now()-fileBaslangicZaman).total_seconds()/60)/60)>48:
+                            lastHour=25
+
+                        print(">>"+fileDirectory+"/"+fileName)
+
+                        runMainProcess(fileName,6,lastHour,fileDirectory)
+                        
+
+                        fileBaslangicZaman=fileBaslangicZaman+timedelta(days=1)
+
+                        
+                        break  
+
+                else:
+                    
+                    print(fileName+" > Yazılmış")
+
+                    fileBaslangicZaman=fileBaslangicZaman+timedelta(days=1)
+
+            except Exception as e:
+
+                print("HATA:"+str(e))
+
+                time.sleep(60)
+
+                if i<2:
+
+                    continue 
+
+                else:
+
+                    raise
+            
+               
+
+
+        
+
