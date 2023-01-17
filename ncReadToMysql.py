@@ -12,100 +12,7 @@ import warnings
 import xarray as xr
 import os
 
-threadCount=0
-
-
-
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-
-def runMainProcess(xrDataSet,zamanArr,filePath,ncsStartHour,ncEndHour,fileDirectory):
-  
-
-    baslangicZamani=datetime.now()
-
-    modelNo=1
-
-    if "ICON" in fileDirectory:
-
-        modelNo=2
-
-
-    #Gerekli Bilgileri Al
-    with open("config.json","r") as file:
-
-        dbApiInfo=json.load(file)
-
-    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
-    
-
-    # select içinde modelno Göndermeyi unutma
-    selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId="+str(modelNo)
-
-    cursor=myDBConnect.cursor()
-
-    cursor.execute(selectTxt)
- 
-    siteGridTable = cursor.fetchall()
-    
-    siteGridTableDF=pd.DataFrame(siteGridTable,columns=["siteId","modelGridListId","meteoModelListId","xGrid","yGrid"])
-
-
-    #site listesi
-    selectTxt="Select id,siteTypeId From siteList where activation=1"
-
-    cursor.execute(selectTxt)
- 
-    siteTable = cursor.fetchall()
-    
-    siteTableDF=pd.DataFrame(siteTable,columns=["siteId","siteTypeId"])
-
-
-    selectTxt="Select yGrid,xGrid From siteGridList where meteoModelListId="+str(modelNo)+" group by  yGrid,xGrid"
-
-    cursor.execute(selectTxt)
- 
-    xyList = cursor.fetchall()
-    
-    myDBConnect.close()
-   
-    hourDiff=ncEndHour-ncsStartHour
-        
-    hourPeriod=math.ceil(hourDiff/4)
-
-    tmpHourStartHour=ncsStartHour
-
-    init=0
-    
-    if "_06" in filePath:
-        init=6
-    elif "_12" in filePath:
-        init=12
-    elif "_18" in filePath:
-        init=18
-    
-    modelName="WRF_GFS"
-
-    if "_ICON" in fileDirectory:
-
-        modelName="WRF_ICON"
-
-
-    print("Read NC File>"+filePath)
-
-
-    while tmpHourStartHour<ncEndHour:
-
-        readwriteNCWithPoolxArray(xrDataSet,zamanArr,xyList,siteTableDF,siteGridTableDF,modelNo,tmpHourStartHour,(tmpHourStartHour+hourPeriod),init,modelName,dbApiInfo,filePath)
-
-        tmpHourStartHour+=hourPeriod
-        
-    return  ""
-
-
-
-   
-
 
 def addColumnToTable(tableName,columnDescTxt,dbApiInfo):
 
@@ -575,8 +482,11 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh
     
     return "Done"
 
-def readNCAndWriteToMongoWithXArray(xDataSet,timeValues,xyList,siteTableDF,site,siteGridList,modelNo,startHour,init,modelName,xyNo,dbApiInfo,filePath):
+def readNCAndWriteToMongoWithXArray(filePath,timeValues,xyList,siteTableDF,site,siteGridList,modelNo,startHour,init,modelName,xyNo,dbApiInfo,fileName):
     try:
+
+        xDataSet,zmn=readNCFileAsXarray(filePath)
+
         print("Başlıyor>"+filePath+">"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"/"+str(xyNo))
 
         siteDictList={}
@@ -773,7 +683,7 @@ def readNCAndWriteToMongoWithXArray(xDataSet,timeValues,xyList,siteTableDF,site,
         print("Log Yazılıyor>"+filePath+">"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"/"+str(xyNo))
 
 
-        insertTXT="Insert Into modelFileWriteLog(fileName,modelName,zamanBaslangic,zamanBitis,writeStartTime,writeEndTime,xyParcaNo) VALUES('"+filePath+"','"+modelName+"','"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"','"+str(baslamaZamani)+"','"+str(datetime.now())+"',"+str(xyNo)+")"
+        insertTXT="Insert Into modelFileWriteLog(fileName,modelName,zamanBaslangic,zamanBitis,writeStartTime,writeEndTime,xyParcaNo) VALUES('"+fileName+"','"+modelName+"','"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"','"+str(baslamaZamani)+"','"+str(datetime.now())+"',"+str(xyNo)+")"
         
         cursor=myDBConnect.cursor()
         
@@ -843,26 +753,45 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fgh
 
     return "bitti"
     
+def readNCFileAsXarray(filePath):
+
+    ncXRDataset = xr.open_dataset(filePath)
+
+    zaman =  [None] * 325
+
+    zamanArr=[]
+
+    for t in range(1,325):
+        try:
+            zaman[t]=datetime.strptime(str(ncXRDataset.variables['Time'][:][t].data).replace("'",'').replace("b",'').replace('_',' '),'%Y-%m-%d %H:%M:%S')
+            if zaman[t].minute!=0:
+                zaman[t]=pd.to_datetime(str(zaman[t].year)+"-"+str(zaman[t].month)+"-"+str(zaman[t].day)+" "+str(zaman[t].hour)+":00")+timedelta(hours=1)
+            else:
+                zaman[t]=pd.to_datetime(str(zaman[t].year)+"-"+str(zaman[t].month)+"-"+str(zaman[t].day)+" "+str(zaman[t].hour)+":00")
+                zamanArr.append(zaman[t])
+        except:
+            return "NC File Zaman Sayısı 325 Değil"
 
 
-def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName,dbaInfo,fileName):
+    ncXRDataset["Time"] = ("Time", zaman)
+
+    return ncXRDataset,zamanArr
     
 
-    processExecutorNC=concurrent.futures.ProcessPoolExecutor(max_workers=7)
+def readwriteNCWithPoolxArray(filePath,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName,dbaInfo,fileName,maxWorker=3):
+    
 
-    futureList=[]
+    ncXRDataset,zamanArr=readNCFileAsXarray(filePath)
+
 
     #kontrol için ilk veri zamanını alıyoruz
     
     startTime=zamanArr[0]-timedelta(hours=1)
 
-    
-    futures=[]
-
-    maxWorker=3
-
     executor=concurrent.futures.ProcessPoolExecutor(max_workers=maxWorker)
     
+    futureList=[]
+
     zamanSelected=[]
 
 
@@ -893,21 +822,21 @@ def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListD
        
        
 
-        tmpCopyR=xDataSet.copy()
+       
 
-        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyR,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
         threadCount+=1
       
 
-        tmpCopyT=xDataSet.copy()
+        
 
-        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyT,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
         threadCount+=1
 
         
-        tmpCopyK=xDataSet.copy()
+       
 
-        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyK,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
         threadCount+=1
      
 
@@ -918,20 +847,20 @@ def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListD
     if tmpZamanSay<len(zamanSelected)-1:
 
         
-        tmpCopyV=xDataSet.copy()
+      
         
-        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyV,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
        
         threadCount+=1
 
 
-        tmpCopyO=xDataSet.copy()
+     
 
-        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyO,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
        
 
         
-        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyV,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,filePath,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
        
         threadCount+=1
 
@@ -939,11 +868,11 @@ def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListD
     print("Calisan:"+str(threadCount))
 
 
-    for future in concurrent.futures.as_completed(futureList):
+    # for future in concurrent.futures.as_completed(futureList):
         
-        print("Kalan:"+str(threadCount))
+    #     print("Kalan:"+str(threadCount))
 
-        futureList=[]
+       
 
 
     return "bitti"
@@ -1116,7 +1045,5 @@ def runNCWriter(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,
 # runNCWriter('1',"/mnt/qNAPN2_vLM2_iMEFsys/NCFiles/WRF_GFS/wrfpost_2022-12-17_06.nc")
 
 # runNCWriter('1',"C:\\Users\\user\\Downloads\Gfs\\wrfpost_2022-11-30_00.nc")
-
-
 
 
