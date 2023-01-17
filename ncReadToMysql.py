@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import mysql.connector 
-from datetime import datetime,timedelta
+from datetime import datetime,timedelta,time
 # import calcWindPower
 # import calcSolarPower
 import math
@@ -10,12 +10,101 @@ from pymongo import MongoClient,UpdateMany
 import concurrent.futures
 import warnings
 import xarray as xr
+import os
+
+threadCount=0
+
 
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
+def runMainProcess(xrDataSet,zamanArr,filePath,ncsStartHour,ncEndHour,fileDirectory):
+  
 
+    baslangicZamani=datetime.now()
+
+    modelNo=1
+
+    if "ICON" in fileDirectory:
+
+        modelNo=2
+
+
+    #Gerekli Bilgileri Al
+    with open("config.json","r") as file:
+
+        dbApiInfo=json.load(file)
+
+    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
+    
+
+    # select içinde modelno Göndermeyi unutma
+    selectTxt="Select siteId,modelGridListId,meteoModelListId,xGrid,yGrid From siteGridList where meteoModelListId="+str(modelNo)
+
+    cursor=myDBConnect.cursor()
+
+    cursor.execute(selectTxt)
+ 
+    siteGridTable = cursor.fetchall()
+    
+    siteGridTableDF=pd.DataFrame(siteGridTable,columns=["siteId","modelGridListId","meteoModelListId","xGrid","yGrid"])
+
+
+    #site listesi
+    selectTxt="Select id,siteTypeId From siteList where activation=1"
+
+    cursor.execute(selectTxt)
+ 
+    siteTable = cursor.fetchall()
+    
+    siteTableDF=pd.DataFrame(siteTable,columns=["siteId","siteTypeId"])
+
+
+    selectTxt="Select yGrid,xGrid From siteGridList where meteoModelListId="+str(modelNo)+" group by  yGrid,xGrid"
+
+    cursor.execute(selectTxt)
+ 
+    xyList = cursor.fetchall()
+    
+    myDBConnect.close()
+   
+    hourDiff=ncEndHour-ncsStartHour
+        
+    hourPeriod=math.ceil(hourDiff/4)
+
+    tmpHourStartHour=ncsStartHour
+
+    init=0
+    
+    if "_06" in filePath:
+        init=6
+    elif "_12" in filePath:
+        init=12
+    elif "_18" in filePath:
+        init=18
+    
+    modelName="WRF_GFS"
+
+    if "_ICON" in fileDirectory:
+
+        modelName="WRF_ICON"
+
+
+    print("Read NC File>"+filePath)
+
+
+    while tmpHourStartHour<ncEndHour:
+
+        readwriteNCWithPoolxArray(xrDataSet,zamanArr,xyList,siteTableDF,siteGridTableDF,modelNo,tmpHourStartHour,(tmpHourStartHour+hourPeriod),init,modelName,dbApiInfo,filePath)
+
+        tmpHourStartHour+=hourPeriod
+        
+    return  ""
+
+
+
+   
 
 
 def addColumnToTable(tableName,columnDescTxt,dbApiInfo):
@@ -486,168 +575,227 @@ def readNCAndWriteToMongo(fTimeArr,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh
     
     return "Done"
 
-def readNCAndWriteToMongoWithXArray(xDataSet,timeValues,xyList,siteTableDF,site,siteGridList,modelNo,startHour,init,modelName,xyNo):
+def readNCAndWriteToMongoWithXArray(xDataSet,timeValues,xyList,siteTableDF,site,siteGridList,modelNo,startHour,init,modelName,xyNo,dbApiInfo,filePath):
+    try:
+        print("Başlıyor>"+filePath+">"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"/"+str(xyNo))
 
-    
-    siteDictList={}
+        siteDictList={}
 
-    siteTimeList={}
+        siteTimeList={}
 
-    siteKontrolText=""
+        siteKontrolText=""
 
-    baslamaZamani=datetime.now()
-    
-    print("Start Hour:"+str(startHour)+">"+str(timeValues[0])+" "+str(xyNo)+" Loading")
-
-    basladi=datetime.now()
-
-    siteDictList=[]
-
-    for timeValue in timeValues:
-        xData=xDataSet.where(xDataSet["Time"]==timeValue, drop=True)
-
-        for xyGridNo in range(0,len(xyList)):
-
-
-
-
-            yGrid=int(xyList[xyGridNo][0])
-
-            xGrid=int(xyList[xyGridNo][1])
-
-            tmpSiteGridList=siteGridList[(siteGridList["xGrid"]==xGrid) & (siteGridList["yGrid"]==yGrid)]
+        baslamaZamani=datetime.now()
         
+        basladi=datetime.now()
 
-            if tmpSiteGridList.shape[0]>0:
+        gridDictList={}
+
+        columnsList=["WS10","WS50","WS100","WD10","WD50","WD100","T2","RH2","PSFC","GHI","DIFF","PREC","SNOW","SUM_SUNHOUR"]
+
+        for column in columnsList:
+        
+            gridDictList[column]=[]
+
+        for timeValue in timeValues:
+
+            xData=xDataSet.where(xDataSet["Time"]==timeValue, drop=True)
+            gridTimeDict={}
 
 
+            for column in columnsList:
+                gridTimeDict[column]={}
 
-                modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
+            for xyGridNo in range(0,len(xyList)):
+            
 
-                siteGridValueDict={}
+                yGrid=int(xyList[xyGridNo][0])
 
+                xGrid=int(xyList[xyGridNo][1])
+
+                tmpSiteGridList=siteGridList[(siteGridList["xGrid"]==xGrid) & (siteGridList["yGrid"]==yGrid)]
                 
-                modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
-      
-                u=np.array(xData["U10"][:,yGrid,xGrid])
-         
-                v=np.array(xData["V10"][:,yGrid,xGrid])
+                if tmpSiteGridList.shape[0]>0:
 
-                ws10,wd10=wind_convert(u,v)
 
-                u=np.array(xData["U50"][:,yGrid,xGrid])
-         
-                v=np.array(xData["V50"][:,yGrid,xGrid])
 
-                ws50,wd50=wind_convert(u,v)
-                              
-                u=np.array(xData["U100"][:,yGrid,xGrid])
-         
-                v=np.array(xData["V100"][:,yGrid,xGrid])
+                    modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
 
-                ws100,wd100=wind_convert(u,v)
+                    siteGridValueDict={}
 
-                t2=np.array(xData["T2"][:,yGrid,xGrid])
+                    
+                    modelGridNo=tmpSiteGridList.iloc[0]["modelGridListId"]
+        
+                    u=np.array(xData["U10"][:,yGrid,xGrid])
+            
+                    v=np.array(xData["V10"][:,yGrid,xGrid])
+
+                    ws10,wd10=wind_convert(u,v)
+
+                    u=np.array(xData["U50"][:,yGrid,xGrid])
+            
+                    v=np.array(xData["V50"][:,yGrid,xGrid])
+
+                    ws50,wd50=wind_convert(u,v)
                                 
-                psfc=np.array(xData["PSFC"][:,yGrid,xGrid])
-                                              
-                rh2=np.array(xData["RH2"][:,yGrid,xGrid])
+                    u=np.array(xData["U100"][:,yGrid,xGrid])
+            
+                    v=np.array(xData["V100"][:,yGrid,xGrid])
 
-                ghi=np.array(xData["GHI"][:,yGrid,xGrid])
+                    ws100,wd100=wind_convert(u,v)
 
-                diff=np.array(xData["DIFF"][:,yGrid,xGrid])
+                    t2=np.array(xData["T2"][:,yGrid,xGrid])
+                                    
+                    psfc=np.array(xData["PSFC"][:,yGrid,xGrid])
+                                                
+                    rh2=np.array(xData["RH2"][:,yGrid,xGrid])
 
-                accprec=np.array(xData["AccPrec"][:,yGrid,xGrid])
+                    ghi=np.array(xData["GHI"][:,yGrid,xGrid])
 
-                snow=np.array(xData["SNOW"][:,yGrid,xGrid])
+                    diff=np.array(xData["DIFF"][:,yGrid,xGrid])
 
-                sunnyTime=0
+                    accprec=np.array(xData["AccPrec"][:,yGrid,xGrid])
 
-                for ghiSay in ghi:
+                    snow=np.array(xData["SNOW"][:,yGrid,xGrid])
 
-                    if ghiSay>=360:
+                    sunnyTime=0
 
-                        sunnyTime+=(10/60)
+                    for ghiSay in ghi:
 
-        
-                siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws10) ,2))
-                siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws50),2))
-                siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws100),2))
+                        if ghiSay>=360:
 
-                siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd10),2))
-                siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd50),2))
-                siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd100),2))
-        
-                siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(t2),2))
-                siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(t2),2))
-                siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(psfc),2))
+                            sunnyTime+=(10/60)
 
-                siteGridValueDict["SUM_SNOW_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(snow),2))
 
-                siteGridValueDict["SUM_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(accprec),2))
+                    # siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws10) ,2))
+                    # siteGridValueDict["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws50),2))
+                    # siteGridValueDict["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws100),2))
 
-                siteGridValueDict["MAX_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(accprec),2))
- 
-                siteGridValueDict["MAX_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(ghi),2))
+                    gridTimeDict["WS10"]["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws10) ,2))
+                    gridTimeDict["WS50"]["WS50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws50),2))
+                    gridTimeDict["WS100"]["WS100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws100),2))
 
-                siteGridValueDict["AVG_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ghi),2))
+                    # siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd10),2))
+                    # siteGridValueDict["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd50),2))
+                    # siteGridValueDict["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd100),2))
 
-                siteGridValueDict["SUM_SUNHOUR_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(sunnyTime,2))
+                    gridTimeDict["WD10"]["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd10),2))
+                    gridTimeDict["WD50"]["WD50_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd50),2))
+                    gridTimeDict["WD100"]["WD100_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd100),2))
 
-                siteGridValueDict["AVG_DIFF_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(diff),2))
 
-                siteGridValueDict["WS10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ws10),2))
 
-                siteGridValueDict["WD10_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(meanWindDirection(wd10),2))
 
-                siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(t2),2))
 
-                siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(t2),2))
+                    # siteGridValueDict["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(t2),2))
+                    # siteGridValueDict["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(t2),2))
 
-                siteGridValueDict["AVG_RH_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(rh2),2))
+                    gridTimeDict["T2"]["AVG_T2_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(t2),2))
+                    gridTimeDict["T2"]["MAX_T2"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(t2),2))
 
-                siteGridValueDict["dataTime"]=timeValue
+                    # siteGridValueDict["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(psfc),2))
+                    gridTimeDict["PSFC"]["AVG_PSFC_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(psfc),2))
 
-                siteGridValueDict["init"]=init
 
-                siteGridValueDict["f_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=-8888.0
+                    
+                    # siteGridValueDict["SUM_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(accprec),2))
+
+                    # siteGridValueDict["SUM_SNOW_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(snow),2))
+
+                    # siteGridValueDict["MAX_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(accprec),2))
+
+
+                    gridTimeDict["PREC"]["SUM_SNOW_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(snow),2))
+
+                    gridTimeDict["PREC"]["SUM_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.sum(accprec),2))
+
+                    gridTimeDict["PREC"]["MAX_ACCPRE_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(accprec),2))
+
+
+                    #columnsList=["WS10","WS50","WS100","T2","RH2","PSFC","GHI","DIFF","CLOUD","PREC"]
+
+                    # siteGridValueDict["MAX_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(ghi),2))
+
+                    # siteGridValueDict["AVG_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ghi),2))
+
+                    # siteGridValueDict["AVG_DIFF_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(diff),2))
+
+                    gridTimeDict["GHI"]["MAX_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(ghi),2))
+                    gridTimeDict["GHI"]["AVG_GHI_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(ghi),2))
+                
+                    gridTimeDict["DIFF"]["AVG_DIFF_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(diff),2))
+                    gridTimeDict["DIFF"]["MAX_DIFF_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.max(diff),2))
+
+                    gridTimeDict["GHI"]["SUM_SUNHOUR_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(sunnyTime,2))
+                    gridTimeDict["DIFF"]["SUM_SUNHOUR_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(sunnyTime,2))
+
+                    # siteGridValueDict["SUM_SUNHOUR_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(sunnyTime,2))
+
+
+                    # siteGridValueDict["AVG_RH_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(rh2),2))
+                    gridTimeDict["RH2"]["AVG_RH_"+str(modelGridNo)+"_"+str(modelNo)]=float(np.round(np.mean(rh2),2))
 
             
+            for column in columnsList:
+        
+                gridTimeDict[column]["dataTime"]=timeValue
+                gridTimeDict[column]["init"]=init
+                gridTimeDict[column]["filePath"]=filePath
+                newvalues = { "$set": gridTimeDict[column] }
+                myquery = {"dataTime": timeValue}
+
+                gridDictList[column].append(UpdateMany(myquery,newvalues,upsert=True))
+
+    
+            myclient = MongoClient("mongodb://89.252.157.127:27017/")
+                            
+            mydbMongoDB = myclient["dbVentus"] #db
+
+            for column in columnsList:
+
+                mongoCol= mydbMongoDB["ncDataModelParam_"+column]
+
+                mongoCol.bulk_write(gridDictList[column])
+
+                mongoCol.create_index("dataTime", unique = True)
+
+            myclient.close()
+
+            for column in columnsList:
+        
+                gridDictList[column]=[]
+        
             
-        siteGridValueDict["dataTime"]=timeValue
-
-        siteGridValueDict["init"]=init
-           
-        newvalues = { "$set": siteGridValueDict }
-
-        myquery = {"dataTime": timeValue}
-
-
-        siteDictList.append(UpdateMany(myquery,newvalues,upsert=True))
-
- 
-    myclient = MongoClient("mongodb://89.252.157.127:27017/")
     
-    mydbMongoDB = myclient["dbVentus"] #db
+        
+        myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database=dbApiInfo["dbInfo"]["database"])
 
-    mongoCol= mydbMongoDB["ncDataModel_"+str(modelNo)]
+        print("Log Yazılıyor>"+filePath+">"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"/"+str(xyNo))
 
-    mongoCol.bulk_write(siteDictList)
 
-    mongoCol.create_index("dataTime", unique = True)
+        insertTXT="Insert Into modelFileWriteLog(fileName,modelName,zamanBaslangic,zamanBitis,writeStartTime,writeEndTime,xyParcaNo) VALUES('"+filePath+"','"+modelName+"','"+str(timeValues[0])+"','"+str(timeValues[len(timeValues)-1])+"','"+str(baslamaZamani)+"','"+str(datetime.now())+"',"+str(xyNo)+")"
+        
+        cursor=myDBConnect.cursor()
+        
+        cursor.execute(insertTXT)
+        
+        myDBConnect.commit()
 
-    myclient.close() 
-   
-    print("Start Hour:"+str(startHour)+"> "+str(timeValues[0])+" HourLoaded >"+str(((datetime.now()-baslamaZamani).total_seconds()/60)))
-    
-    
-    return "Done"
+        myDBConnect.close()
 
+        return "Done"
+    except Exception as y:
+        return str(y)
+        
 
 
 def futureAnswer(future):
-    
-    cvp=future.result()
+    global threadCount
+        
+    threadCount-=1
+ 
+    print("Kalan:"+str(threadCount))
+
 
 
 def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fghi,fdiff,faccprec,fsnow,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName):
@@ -680,10 +828,11 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fgh
             futures.append(executor.submit(readNCAndWriteToMongo,ftime[timeNo:timeNo+6],fu10[timeNo:timeNo+6],fv10[timeNo:timeNo+6],fu50[timeNo:timeNo+6],fv50[timeNo:timeNo+6],fu100[timeNo:timeNo+6],fv100[timeNo:timeNo+6],ft2[timeNo:timeNo+6],fpsfc[timeNo:timeNo+6],frh2[timeNo:timeNo+6],fghi[timeNo:timeNo+6],fdiff[timeNo:timeNo+6],faccprec[timeNo:timeNo+6],fsnow[timeNo:timeNo+6],xyList,siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,))
 
 
-
+    
     for future in concurrent.futures.as_completed(futures):
 
         future.result()
+
         print(str(future.result())+" Bitti")
 
     
@@ -696,32 +845,28 @@ def readwriteNCWithPool(ftime,fu10,fv10,fu50,fv50,fu100,fv100,ft2,fpsfc,frh2,fgh
     
 
 
-def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName):
+def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListDF,modelNo,dataStartHourTime,dataEndHourTime,init,modelName,dbaInfo,fileName):
     
 
+    processExecutorNC=concurrent.futures.ProcessPoolExecutor(max_workers=7)
 
-    #ilk Veri Zamanı
+    futureList=[]
+
+    #kontrol için ilk veri zamanını alıyoruz
     
-   
     startTime=zamanArr[0]-timedelta(hours=1)
 
     
-
-
-
-
-
     futures=[]
 
-    maxWorker=1
+    maxWorker=3
 
     executor=concurrent.futures.ProcessPoolExecutor(max_workers=maxWorker)
     
     zamanSelected=[]
-    zamanCopyArr=zamanArr.copy()
-    zamanSecilen=0
 
 
+    #yazılacak saatleri seçiyoruz
     for timeNo in range(len(zamanArr)):
 
         hourDiff=(zamanArr[timeNo]-startTime).total_seconds()/60
@@ -732,52 +877,74 @@ def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListD
        
             zamanSelected.append(zamanArr[timeNo])
 
-
-            
-
-    
-    
+   
     
     tmpZamanSay=0
-
+    threadCount=0
+    
     for zamanSay in range(0,len(zamanSelected)-1,3):
+
         tmpZamanSay=zamanSay+3
-        tmpCopy=xDataSet.copy()
-        futures.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopy,zamanSelected[zamanSay:zamanSay+3],xyList[0:10000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,))
+
+        sonZamanNo=zamanSay+3
+
+        if zamanSay+3>len(zamanSelected):
+            sonZamanNo=len(zamanSelected)
+       
+       
+
         tmpCopyR=xDataSet.copy()
-        futures.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyR,zamanSelected[zamanSay:zamanSay+3],xyList[10000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,))
+
+        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyR,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
+        threadCount+=1
+      
+
+        tmpCopyT=xDataSet.copy()
+
+        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyT,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
+        threadCount+=1
+
+        
+        tmpCopyK=xDataSet.copy()
+
+        futureList.append(processExecutorNC.submit(readNCAndWriteToMongoWithXArray,tmpCopyK,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
+        threadCount+=1
+     
 
 
     
-    
+    #kalan saat var ise onu başlatıyoruz
+
     if tmpZamanSay<len(zamanSelected)-1:
 
-        tmpZamanSayy=tmpZamanSay
-        tmpCopyT=xDataSet.copy()
         
-        futures.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyT,zamanSelected[tmpZamanSay:],xyList[0:10000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,))
-
         tmpCopyV=xDataSet.copy()
-        futures.append(executor.submit(readNCAndWriteToMongoWithXArray,xDataSet,zamanSelected[tmpZamanSay:],xyList[10000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,))
-
-
- 
-   
-    for future in concurrent.futures.as_completed(futures):
-
-         future.result()
-
-         print(str(future.result())+" Bitti")
-
+        
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyV,zamanSelected[zamanSay:sonZamanNo],xyList[0:3000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,1,dbaInfo,fileName))
        
-   
+        threadCount+=1
 
 
-    
-    executor.shutdown()
+        tmpCopyO=xDataSet.copy()
+
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyO,zamanSelected[zamanSay:sonZamanNo],xyList[3000:6000],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,2,dbaInfo,fileName))
+       
+
+        
+        futureList.append(executor.submit(readNCAndWriteToMongoWithXArray,tmpCopyV,zamanSelected[zamanSay:sonZamanNo],xyList[6000:],siteTableDF,1,siteGridListDF,modelNo,dataStartHourTime,init,modelName,3,dbaInfo,fileName))
+       
+        threadCount+=1
 
 
-    
+    print("Calisan:"+str(threadCount))
+
+
+    for future in concurrent.futures.as_completed(futureList):
+        
+        print("Kalan:"+str(threadCount))
+
+        futureList=[]
+
 
     return "bitti"
 
@@ -793,7 +960,8 @@ def readwriteNCWithPoolxArray(xDataSet,zamanArr,xyList,siteTableDF,siteGridListD
 
 
 
-def addSiteGridList(site,modelNo,yakinEkle,uzakekle,dbApiInfo):
+def addSiteGridList(site,modelNo,yakinEkle,uzakekle,dbApiInfo,gridTable):
+
 
 
     siteLat=site[4]
@@ -802,15 +970,15 @@ def addSiteGridList(site,modelNo,yakinEkle,uzakekle,dbApiInfo):
     
 
 
-    myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="metmodelDB")
+    # myDBConnect = mysql.connector.connect(host=dbApiInfo["dbInfo"]["dbAddress"], user = dbApiInfo["dbInfo"]["dbUsersName"], password=dbApiInfo["dbInfo"]["dbPassword"], database="metmodelDB")
 
-    selectTxt="Select * From metModelGridList where meteoModelListId="+str(modelNo) 
+    # selectTxt="Select * From metModelGridList where meteoModelListId="+str(modelNo) 
 
-    cursor=myDBConnect.cursor()
+    # cursor=myDBConnect.cursor()
             
-    cursor.execute(selectTxt)
+    # cursor.execute(selectTxt)
     
-    gridTable = cursor.fetchall()
+    # gridTable = cursor.fetchall()
 
     gridTableDF=pd.DataFrame(gridTable,columns=["id","modelId","xGridNo","yGridNo","xLon","yLat"])
     
@@ -876,9 +1044,16 @@ def addSiteGridList(site,modelNo,yakinEkle,uzakekle,dbApiInfo):
         for xGridNo in range(altLonGridNo,ustLonGridNo+1):
 
             gridTableTmpDF=gridTableDF[(gridTableDF["xGridNo"]==xGridNo) & (gridTableDF["yGridNo"]==yGridNo)]
-           
-            selectedGrids.append((site[0],gridTableTmpDF.iloc[0]["id"],modelNo,xGridNo,yGridNo))
-    
+
+            try:
+                if gridTableTmpDF.shape[0]>0:
+
+                    selectedGrids.append((site[0],gridTableTmpDF.iloc[0]["id"],modelNo,xGridNo,yGridNo))
+
+            except:
+
+                t=""
+
     cursor=myDBConnect.cursor()
 
     cursor.executemany(insertTXT,selectedGrids)
@@ -887,17 +1062,28 @@ def addSiteGridList(site,modelNo,yakinEkle,uzakekle,dbApiInfo):
 
     myDBConnect.close()
 
-    return selectedGrids        
+    if gridTableTmpDF.shape[0]>0:
+
+        return str(gridTableTmpDF.iloc[0]["id"])+"-"+str(modelNo)+" Bitti"     
+        
+    else:
+
+        return "Bitti"
 
 def calcDistance(siteLat,siteLon,yLat,xLon):
+    try:
 
-    yDistance=abs(siteLat-yLat)
+        yDistance=abs(siteLat-yLat)
 
-    xDistance=abs(siteLon-xLon)
+        xDistance=abs(siteLon-xLon)
 
-    distance=math.sqrt(math.pow(yDistance,2)+math.pow(xDistance,2))
+        distance=math.sqrt(math.pow(yDistance,2)+math.pow(xDistance,2))
 
-    return distance
+        return distance
+
+    except:
+
+        return 10000
 
 
 
